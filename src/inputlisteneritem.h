@@ -20,6 +20,7 @@
 
 #include "inputplugin.h"
 #include "uinputkeyboard.h"
+#include "xkbkeymapper.h"
 
 #include <memory>
 
@@ -319,6 +320,28 @@ private:
     bool m_uinputCtrlHeld = false;
     bool m_uinputAltHeld = false;
     bool m_uinputMetaHeld = false;
+
+    //! Keymap the niri path resolves keysyms with, built from the layout named
+    //! by PLASMA_KEYBOARD_XKB_LAYOUT (or XKB_DEFAULT_LAYOUT, or "us"). There is
+    //! no input-method context on niri, so there is no compositor keymap to
+    //! scan.
+    std::unique_ptr<XkbKeyMapper> m_niriKeyMapper;
+    //! Whether the niri path currently holds Shift / AltGr down through uinput.
+    bool m_uinputShiftHeld = false;
+    bool m_uinputAltGrHeld = false;
+
+    //! Sends @p event as a real key through the uinput device, resolving the
+    //! keycode on m_niriKeyMapper's keymap. Used for every key in niri mode,
+    //! where no input-method context exists to carry it.
+    //! Returns false when the keysym cannot be mapped; the caller then drops
+    //! the key instead of typing the wrong character.
+    bool sendUinputKey(QKeyEvent *event, bool press);
+
+    //! Releases Shift/AltGr held by sendUinputKey() or handleModifiedKey().
+    void releaseUinputLevelModifiers();
+
+    //! Looks @p keysym up on m_niriKeyMapper, creating it on first use.
+    XkbKeyMapper::Match mapKeysymOnNiriKeymap(xkb_keysym_t keysym);
 
     //! Presses @p key's uinput key (Control_L/Alt_L/Super_L) if it is not
     //! already held. Safe to call unconditionally; a no-op for any other key

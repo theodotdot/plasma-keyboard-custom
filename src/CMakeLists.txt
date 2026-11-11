@@ -150,6 +150,10 @@ target_sources(plasma-keyboard-custom PRIVATE
     touchholdwatcher.cpp
     uinputkeyboard.cpp
     uinputkeyboard.h
+    xkbkeymapper.cpp
+    xkbkeymapper.h
+    niriinputmethod.cpp
+    niriinputmethod.h
     inputplugin.h
     inputcontentpolicy.h
     panelstubgeometry.h

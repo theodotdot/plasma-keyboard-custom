@@ -10,6 +10,7 @@
 #include "clipboard/clipboardhistory.h"
 #include "inputmethod_p.h"
 #include "logging.h"
+#include "nirimode.h"
 #include "plasmakeyboardsettings.h"
 #include "touchholdwatcher.h"
 
@@ -22,6 +23,7 @@
 
 #include <QDBusConnection>
 #include <QDBusMessage>
+#include <QInputMethod>
 #include <QLoggingCategory>
 #include <QRegularExpression>
 #include <QTextFormat>
@@ -225,6 +227,16 @@ InputListenerItem::InputListenerItem()
     connect(m_hideDelay, &QTimer::timeout, this, [] {
         QGuiApplication::inputMethod()->setVisible(false);
         QGuiApplication::inputMethod()->reset();
+    });
+
+    // Never leave a synthetic key or modifier held down behind a hidden
+    // keyboard: in niri mode the uinput device is the only transport, and a
+    // stuck modifier would follow every later keystroke.
+    connect(QGuiApplication::inputMethod(), &QInputMethod::visibleChanged, this, [this] {
+        if (!QGuiApplication::inputMethod()->isVisible()) {
+            releaseUinputLevelModifiers();
+            releaseAllHeldUinputModifiers();
+        }
     });
 
     connect(this, &InputListenerItem::predictionTargetChanged, this, [this] {
@@ -899,7 +911,15 @@ bool InputListenerItem::handleModifiedKey(QKeyEvent *event, bool press)
         return false;
     }
 
-    const uint32_t keycode = m_input.keycodeForKeysym(keysyms.first());
+    uint32_t keycode = m_input.keycodeForKeysym(keysyms.first());
+    int level = 0;
+    if (keycode == 0 && plasmaKeyboardNiriMode()) {
+        // No input-method context, so there is no compositor keymap to scan:
+        // resolve the key on the keymap built for the niri path.
+        const XkbKeyMapper::Match match = mapKeysymOnNiriKeymap(keysyms.first());
+        keycode = match.keycode;
+        level = match.level;
+    }
     if (keycode == 0) {
         return false;
     }
@@ -917,9 +937,14 @@ bool InputListenerItem::handleModifiedKey(QKeyEvent *event, bool press)
         // focus. keycodeForKeysym() already returns an evdev scancode (see
         // its own comment), so it can be sent as-is.
         if (press) {
+            if ((level & 1) && !m_uinputShiftHeld) {
+                m_uinput->pressKey(KEY_LEFTSHIFT);
+                m_uinputShiftHeld = true;
+            }
             m_uinput->pressKey(keycode);
         } else {
             m_uinput->releaseKey(keycode);
+            releaseUinputLevelModifiers();
             releaseAllHeldUinputModifiers();
             modifiers->reset();
             cancelModifierHoldTimer();
@@ -948,6 +973,77 @@ bool InputListenerItem::handleModifiedKey(QKeyEvent *event, bool press)
         // A hold timer may still be running for this modifier (it was pressed
         // just before this combination completed); it must not fire later.
         cancelModifierHoldTimer();
+    }
+    return true;
+}
+
+XkbKeyMapper::Match InputListenerItem::mapKeysymOnNiriKeymap(xkb_keysym_t keysym)
+{
+    if (!m_niriKeyMapper) {
+        const QString layout = qEnvironmentVariable("PLASMA_KEYBOARD_XKB_LAYOUT", qEnvironmentVariable("XKB_DEFAULT_LAYOUT", QStringLiteral("us")));
+        const QString variant = qEnvironmentVariable("PLASMA_KEYBOARD_XKB_VARIANT", qEnvironmentVariable("XKB_DEFAULT_VARIANT"));
+        m_niriKeyMapper = std::make_unique<XkbKeyMapper>(layout, variant);
+        qCDebug(PlasmaKeyboard) << "niri keymap built for layout" << layout << (variant.isEmpty() ? QString() : (QStringLiteral("variant ") + variant))
+                                << "usable:" << m_niriKeyMapper->isValid();
+    }
+    return m_niriKeyMapper->find(keysym);
+}
+
+void InputListenerItem::releaseUinputLevelModifiers()
+{
+    if (!m_uinput || !m_uinput->isValid()) {
+        return;
+    }
+    if (m_uinputShiftHeld) {
+        m_uinput->releaseKey(KEY_LEFTSHIFT);
+        m_uinputShiftHeld = false;
+    }
+    if (m_uinputAltGrHeld) {
+        m_uinput->releaseKey(KEY_RIGHTALT);
+        m_uinputAltGrHeld = false;
+    }
+}
+
+bool InputListenerItem::sendUinputKey(QKeyEvent *event, bool press)
+{
+    if (!m_uinput || !m_uinput->isValid()) {
+        return false;
+    }
+
+    const QList<xkb_keysym_t> keysyms = QXkbCommon::toKeysym(event);
+    if (keysyms.isEmpty()) {
+        return false;
+    }
+
+    const XkbKeyMapper::Match match = mapKeysymOnNiriKeymap(keysyms.first());
+    if (!match.isValid()) {
+        if (press) {
+            qCWarning(PlasmaKeyboard)
+                << QStringLiteral("No keycode on the niri keymap for keysym 0x%1, text \"%2\" - key dropped").arg(keysyms.first(), 0, 16).arg(event->text());
+        }
+        return false;
+    }
+
+    // Level 1 needs Shift, level 2 AltGr, level 3 both. A keysym found at level
+    // 0 for an upper-case character (the lookup folds case) still needs Shift.
+    const QString text = event->text();
+    const bool textIsUpper = text.size() == 1 && text.at(0).isUpper();
+    const bool needShift = (match.level & 1) || (match.level == 0 && textIsUpper);
+    const bool needAltGr = match.level >= 2;
+
+    if (press) {
+        if (needShift && !m_uinputShiftHeld) {
+            m_uinput->pressKey(KEY_LEFTSHIFT);
+            m_uinputShiftHeld = true;
+        }
+        if (needAltGr && !m_uinputAltGrHeld) {
+            m_uinput->pressKey(KEY_RIGHTALT);
+            m_uinputAltGrHeld = true;
+        }
+        m_uinput->pressKey(int(match.keycode));
+    } else {
+        m_uinput->releaseKey(int(match.keycode));
+        releaseUinputLevelModifiers();
     }
     return true;
 }
@@ -1048,6 +1144,16 @@ void InputListenerItem::keyPressEvent(QKeyEvent *event)
         return;
     }
 
+    if (plasmaKeyboardNiriMode()) {
+        // No input-method context to carry the key: send it as a real key
+        // through the uinput device, which reaches the focused client and the
+        // compositor's own bindings.
+        if (sendUinputKey(event, true)) {
+            event->accept();
+        }
+        return;
+    }
+
     const QList<xkb_keysym_t> keys = QXkbCommon::toKeysym(event);
     for (auto key : keys) {
         // Simulate key press only if it's not textual
@@ -1121,6 +1227,13 @@ void InputListenerItem::keyReleaseEvent(QKeyEvent *event)
         // modifier was already pressed for real through uinput, release it
         // too, so it never gets stuck down.
         releaseAllHeldUinputModifiers();
+    }
+
+    if (plasmaKeyboardNiriMode()) {
+        if (sendUinputKey(event, false)) {
+            event->accept();
+        }
+        return;
     }
 
     const QList<xkb_keysym_t> keys = QXkbCommon::toKeysym(event);

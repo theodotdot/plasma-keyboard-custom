@@ -12,6 +12,8 @@
 #include "keyboardvisibilitystate.h"
 #include "layoutpathhelper.h"
 #include "logging.h"
+#include "niriinputmethod.h"
+#include "nirimode.h"
 #include "panelstubgeometry.h"
 #include "plasmakeyboardsettings.h"
 #include "restartwatcher.h"
@@ -48,6 +50,7 @@
 #include <QPointer>
 #include <QProcess>
 #include <QQmlApplicationEngine>
+#include <QQmlContext>
 #include <QQuickWindow>
 #include <QRegion>
 #include <QScreen>
@@ -73,6 +76,10 @@ constexpr auto s_kwinPropertiesIface = "org.freedesktop.DBus.Properties";
 
 int kwinMode()
 {
+    if (plasmaKeyboardNiriMode()) {
+        // niri has no org.kde.KWin.VirtualKeyboard: there is no compositor mode.
+        return -1;
+    }
     QDBusMessage msg =
         QDBusMessage::createMethodCall(QLatin1String(s_kwinService), QLatin1String(s_kwinPath), QLatin1String(s_kwinPropertiesIface), QStringLiteral("Get"));
     msg << QLatin1String(s_kwinIface) << QStringLiteral("mode");
@@ -85,6 +92,9 @@ int kwinMode()
 
 void setKwinMode(int mode)
 {
+    if (plasmaKeyboardNiriMode()) {
+        return;
+    }
     QDBusMessage msg =
         QDBusMessage::createMethodCall(QLatin1String(s_kwinService), QLatin1String(s_kwinPath), QLatin1String(s_kwinPropertiesIface), QStringLiteral("Set"));
     msg << QLatin1String(s_kwinIface) << QStringLiteral("mode") << QVariant::fromValue(QDBusVariant(QVariant::fromValue(mode)));
@@ -93,6 +103,11 @@ void setKwinMode(int mode)
 
 bool kwinVisible()
 {
+    if (plasmaKeyboardNiriMode()) {
+        // Nothing else drives the keyboard on niri: the local input-method
+        // state is the only source of truth.
+        return QGuiApplication::inputMethod()->isVisible();
+    }
     QDBusMessage msg =
         QDBusMessage::createMethodCall(QLatin1String(s_kwinService), QLatin1String(s_kwinPath), QLatin1String(s_kwinPropertiesIface), QStringLiteral("Get"));
     msg << QLatin1String(s_kwinIface) << QStringLiteral("visible");
@@ -105,6 +120,9 @@ bool kwinVisible()
 
 void activateKwinKeyboard()
 {
+    if (plasmaKeyboardNiriMode()) {
+        return;
+    }
     QDBusMessage msg =
         QDBusMessage::createMethodCall(QLatin1String(s_kwinService), QLatin1String(s_kwinPath), QLatin1String(s_kwinIface), QStringLiteral("forceActivate"));
     QDBusConnection::sessionBus().call(msg, QDBus::NoBlock);
@@ -113,6 +131,10 @@ void activateKwinKeyboard()
 // Runs JavaScript inside plasmashell (used to control the Plasma panels).
 void evaluatePlasmaScript(const QString &script, bool blocking = false)
 {
+    if (plasmaKeyboardNiriMode()) {
+        // No plasmashell to evaluate scripts in.
+        return;
+    }
     QDBusMessage msg = QDBusMessage::createMethodCall(QStringLiteral("org.kde.plasmashell"),
                                                       QStringLiteral("/PlasmaShell"),
                                                       QStringLiteral("org.kde.PlasmaShell"),
@@ -467,6 +489,30 @@ public:
         activateKeyboardWindow(m_keyboard);
     }
 
+    //! Maps or unmaps the layer-shell keyboard window directly.
+    //!
+    //! On niri nothing else drives the keyboard: there is no input-method
+    //! context to ask for it and no compositor D-Bus property to follow, so
+    //! the toggle owns the mapping.
+    void setKeyboardWindowMapped(bool visible)
+    {
+        if (!m_keyboard) {
+            qCWarning(PlasmaKeyboard) << "setKeyboardWindowMapped called before the keyboard window exists";
+            return;
+        }
+        qCDebug(PlasmaKeyboard) << "setKeyboardWindowMapped" << visible << "window" << m_keyboard << "layer-shell" << m_layerShell;
+        if (visible) {
+            // Qt Virtual Keyboard keeps the keys disabled unless the window
+            // holding the input item is the active window.
+            activateKeyboardWindow(m_keyboard);
+        }
+        m_keyboard->setVisible(visible);
+        if (visible) {
+            applyPanelLayout();
+            m_keyboard->requestUpdate();
+        }
+    }
+
     //! Whether KWin considers the virtual keyboard to be on screen.
     void setKwinVisible(bool visible)
     {
@@ -654,6 +700,7 @@ private:
 class KeyboardHotkeyController : public QObject
 {
     Q_OBJECT
+    Q_CLASSINFO("D-Bus Interface", "org.kde.plasma.keyboard.custom")
 public:
     explicit KeyboardHotkeyController(KeyboardWindowBridge *bridge, QObject *parent = nullptr)
         : QObject(parent)
@@ -755,9 +802,43 @@ public:
     }
 
 public Q_SLOTS:
+    //! D-Bus control surface, used by compositors without a keyboard daemon
+    //! (niri): the toggle is called from a compositor binding.
+    void hideKeyboard()
+    {
+        if (plasmaKeyboardNiriMode()) {
+            m_bridge->setKeyboardWindowMapped(false);
+        }
+        QGuiApplication::inputMethod()->hide();
+    }
+
+    void toggleKeyboard()
+    {
+        showKeyboard();
+    }
+
+    QString getState() const
+    {
+        if (plasmaKeyboardNiriMode()) {
+            return m_bridge && m_bridge->keyboardWindowVisible() ? QStringLiteral("visible") : QStringLiteral("hidden");
+        }
+        return QGuiApplication::inputMethod()->isVisible() ? QStringLiteral("visible") : QStringLiteral("hidden");
+    }
+
     void showKeyboard()
     {
         qCDebug(PlasmaKeyboard) << "Show-virtual-keyboard shortcut triggered";
+        if (plasmaKeyboardNiriMode()) {
+            // No compositor asks for the keyboard and no input-method context
+            // appears on its own: the toggle maps the layer-shell window.
+            if (m_bridge->keyboardWindowVisible()) {
+                hideKeyboard();
+            } else {
+                QGuiApplication::inputMethod()->setVisible(true);
+                m_bridge->setKeyboardWindowMapped(true);
+            }
+            return;
+        }
         // Also when only this side has it shown: with hideOnInputFocusLoss off
         // the keyboard can stay up after KWin already considers it hidden.
         if (kwinVisible() || QGuiApplication::inputMethod()->isVisible()) {
@@ -784,7 +865,7 @@ public Q_SLOTS:
     // reaches the bottom of the screen, and restore them afterwards.
     void updatePanelVisibility()
     {
-        const bool compositorVisible = kwinVisible();
+        const bool compositorVisible = plasmaKeyboardNiriMode() ? (m_bridge && m_bridge->keyboardWindowVisible()) : kwinVisible();
         const auto *lock = SessionLockState::instance();
         const auto visibilityChange = m_visibility.update(compositorVisible,
                                                           lock->isKnown(),
@@ -947,6 +1028,17 @@ int main(int argc, char **argv)
         return runInputMethodWatchdog();
     }
 
+    // The Qt build on Pocknix routes qDebug/qWarning to a sink we cannot see
+    // (a plain fprintf still reaches stderr). A handler is the only way to get
+    // diagnostics out of the application on this image.
+    if (plasmaKeyboardNiriMode()) {
+        qInstallMessageHandler([](QtMsgType type, const QMessageLogContext &context, const QString &message) {
+            const char *level = type == QtDebugMsg ? "debug" : type == QtInfoMsg ? "info" : type == QtWarningMsg ? "warning" : "critical";
+            fprintf(stderr, "%s %s: %s\n", level, context.category ? context.category : "default", qPrintable(message));
+            fflush(stderr);
+        });
+    }
+
     qputenv("QT_IM_MODULE", QByteArray("qtvirtualkeyboard"));
 
     initLayoutsPath();
@@ -973,7 +1065,7 @@ int main(int argc, char **argv)
     // watchdog outlives this process and asks KWin for a replacement. Under a
     // test it would outlive the test instead and restart the session input
     // method, so there it stays away.
-    if (!testMode) {
+    if (!testMode && !plasmaKeyboardNiriMode()) {
         QProcess::startDetached(QCoreApplication::applicationFilePath(), {QStringLiteral("--watchdog")});
     }
 
@@ -1002,13 +1094,21 @@ int main(int argc, char **argv)
     showAction->setProperty("componentName", QStringLiteral("org.kde.plasma.keyboard.custom"));
     showAction->setProperty("componentDisplayName", i18n("Plasma Keyboard (custom)"));
     const QList<QKeySequence> defaultShortcut{QKeySequence(Qt::META | Qt::SHIFT | Qt::Key_K)};
-    if (!testMode) {
+    if (!testMode && !plasmaKeyboardNiriMode()) {
         KGlobalAccel::self()->setDefaultShortcut(showAction, defaultShortcut, KGlobalAccel::NoAutoloading);
         KGlobalAccel::self()->setShortcut(showAction, defaultShortcut, KGlobalAccel::NoAutoloading);
     }
     auto *keyboardWindowBridge = new KeyboardWindowBridge(&application);
     auto *hotkeyController = new KeyboardHotkeyController(keyboardWindowBridge, &application);
     QObject::connect(showAction, &QAction::triggered, hotkeyController, &KeyboardHotkeyController::showKeyboard);
+
+    if (plasmaKeyboardNiriMode() || testMode) {
+        QDBusConnection bus = QDBusConnection::sessionBus();
+        bus.registerObject(QStringLiteral("/org/kde/plasma/keyboard"), hotkeyController, QDBusConnection::ExportAllSlots);
+        if (!bus.registerService(QStringLiteral("org.kde.plasma.keyboard.custom"))) {
+            qCWarning(PlasmaKeyboard) << "Could not register the keyboard control service:" << bus.lastError().message();
+        }
+    }
 
     KCrash::initialize();
 
@@ -1036,6 +1136,12 @@ int main(int argc, char **argv)
     // User themes (import/export/remove and the list of built-in themes).
     qmlRegisterSingletonInstance("org.kde.plasma.keyboard.custom.lib", 1, 0, "ThemeManager", ThemeManager::instance());
 
+    // Qt Virtual Keyboard has no platform input context on niri (the Wayland
+    // platform plugin refuses qtvirtualkeyboard client-side), so the input
+    // engine gets this one instead; main.qml installs it.
+    auto *niriInputMethod = new NiriInputMethod(&application);
+    qmlRegisterSingletonInstance("org.kde.plasma.keyboard.custom.lib", 1, 0, "NiriInputMethod", niriInputMethod);
+
     // The visible keyboard window (layer-shell) and the panel window KWin keeps
     // managing.
     qmlRegisterSingletonInstance("org.kde.plasma.keyboard.custom.lib", 1, 0, "KeyboardWindow", keyboardWindowBridge);
@@ -1062,14 +1168,24 @@ int main(int argc, char **argv)
     }
     panelStub.setMask(QRegion(0, 0, 1, 1));
     if (!initInputPanelIntegration(&panelStub, InputPanelRole::Keyboard)) {
-        qCCritical(PlasmaKeyboard)
-            << "Cannot run plasma-keyboard-custom standalone. You can enable it in Plasma's System Settings app, on the “Virtual Keyboard” page.";
-        return 1;
+        if (!plasmaKeyboardNiriMode()) {
+            qCCritical(PlasmaKeyboard)
+                << "Cannot run plasma-keyboard-custom standalone. You can enable it in Plasma's System Settings app, on the “Virtual Keyboard” page.";
+            return 1;
+        }
+        // niri has no zwp_input_panel_surface_v1 and no input-method-v1. The
+        // stub only teaches KWin where the panel is; the layer-shell window
+        // carries that geometry itself, so run without it.
+        qCInfo(PlasmaKeyboard) << "No input-panel surface (expected on niri); running without the KWin geometry stub";
+    } else {
+        panelStub.setVisible(true);
+        keyboardWindowBridge->setStubWindow(&panelStub);
     }
-    panelStub.setVisible(true);
-    keyboardWindowBridge->setStubWindow(&panelStub);
 
     QQmlApplicationEngine view;
+    // QML needs to know whether the compositor drives the keyboard: without an
+    // input-method protocol, the panel's active state has to follow the window.
+    view.rootContext()->setContextProperty(QStringLiteral("plasmaKeyboardNiriMode"), plasmaKeyboardNiriMode());
     auto *lockscreenOverlay = new LockscreenOverlay;
     // Let the manager read the effective palette from the QML theme layer
     // (used by exportTheme).
@@ -1096,6 +1212,19 @@ int main(int argc, char **argv)
         LayerShellQt::Window::Anchors anchors = LayerShellQt::Window::AnchorTop;
         anchors |= LayerShellQt::Window::AnchorLeft;
         layerShell->setAnchors(anchors);
+        if (plasmaKeyboardNiriMode()) {
+            // LayerShellQt places the surface on the active output by default.
+            // The Thor's keyboard belongs on the bottom panel, whatever is
+            // focused at the time, so pin it there.
+            const QString outputName = qEnvironmentVariable("PLASMA_KEYBOARD_OUTPUT", QStringLiteral("DSI-1"));
+            for (auto *screen : QGuiApplication::screens()) {
+                if (screen->name() == outputName) {
+                    window->setScreen(screen);
+                    layerShell->setScreen(screen);
+                    break;
+                }
+            }
+        }
         layerShell->setDesiredSize(window->screen() ? window->screen()->geometry().size() : QSize(1280, 800));
         // The keyboard must not take the focus away from the field it types
         // into, so the compositor is not asked to activate the window; Qt is told
@@ -1110,7 +1239,10 @@ int main(int argc, char **argv)
         layerShell->setActivateOnShow(false);
 #endif
 #ifdef HAVE_LAYERSHELLQT_WANTS_ACTIVE_SCREEN
-        layerShell->setWantsToBeOnActiveScreen(true);
+        if (!plasmaKeyboardNiriMode()) {
+            // niri pins the keyboard to a fixed output (see above).
+            layerShell->setWantsToBeOnActiveScreen(true);
+        }
 #endif
 
         const auto registerKeyboardWindow = [keyboardWindowBridge, layerShell, lockscreenOverlay, window](bool authorizeLockscreen) {
@@ -1124,6 +1256,11 @@ int main(int argc, char **argv)
             }
 
             const auto authorizeKeyboardRole = [lockscreenOverlay, window]() {
+                if (plasmaKeyboardNiriMode()) {
+                    // No kde-lockscreen-overlay-v1 here, and the layer surface
+                    // needs no restricted role to be usable.
+                    return;
+                }
                 if (!window->isVisible()) {
                     return;
                 }
@@ -1168,6 +1305,12 @@ int main(int argc, char **argv)
             });
 
             QObject::connect(window, &QWindow::visibleChanged, window, [window, authorizeKeyboardRole](bool visible) {
+                if (plasmaKeyboardNiriMode()) {
+                    // The output is pinned and there is no compositor asking
+                    // for the keyboard back, so hiding must not destroy the
+                    // layer surface: destroy() leaves the window unmappable.
+                    return;
+                }
                 // visibleChanged(true) precedes platformWindow->setVisible(true):
                 // the Wayland shell role is not ready yet. Authorize only from
                 // the post-show QInputMethod callback or after the recreate.
@@ -1254,7 +1397,7 @@ int main(int argc, char **argv)
     // from them (KDE bug 459136), so a small script inside KWin watches the
     // keyboard and returns the geometry to the windows it shortened. A test
     // against a mock compositor must not load it into the session's KWin.
-    if (!testMode) {
+    if (!testMode && !plasmaKeyboardNiriMode()) {
         const QString windowRestoreScript = installWindowRestoreScript();
         if (!windowRestoreScript.isEmpty()) {
             setWindowRestoreScript(windowRestoreScript, true);

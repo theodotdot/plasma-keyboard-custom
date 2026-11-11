@@ -21,6 +21,17 @@ InputPanelWindow {
     width: Screen.width
     color: 'transparent'
 
+    // niri: no client-side Qt Virtual Keyboard platform context (the Wayland
+    // platform plugin refuses qtvirtualkeyboard as a client input module), so
+    // nothing switches the panel active on its own. The mapped layer-shell
+    // window is the authority instead.
+    Binding {
+        target: inputPanel.keyboard
+        property: "active"
+        value: true
+        when: plasmaKeyboardNiriMode && root.visible && inputPanel.keyboard
+    }
+
     // The style sizes the panel from the screen size, but as a QtObject its own
     // Screen attached property does not follow this window (see style.qml).
     // This window is always as large as the screen the keyboard is on.
@@ -706,6 +717,12 @@ InputPanelWindow {
     Component.onCompleted: {
         VirtualKeyboardSettings.keySoundVolume = 100;
         root.updatePredictions();
+
+        // Qt Virtual Keyboard has no platform input context on niri; install
+        // the application's own, which forwards keys to InputListenerItem.
+        if (plasmaKeyboardNiriMode && inputPanel.InputContext && inputPanel.InputContext.inputEngine) {
+            inputPanel.InputContext.inputEngine.inputMethod = PlasmaKeyboard.NiriInputMethod;
+        }
 
         // The window can already be active by the time the QML is loaded, in
         // which case onActiveChanged will not fire for it.

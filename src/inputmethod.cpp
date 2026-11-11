@@ -6,6 +6,7 @@
 
 #include "inputmethod_p.h"
 #include "logging.h"
+#include "nirimode.h"
 
 #include <QDateTime>
 #include <QDebug>
@@ -27,6 +28,11 @@ InputMethod::InputMethod()
         this,
         [this]() {
             if (!isActive()) {
+                if (plasmaKeyboardNiriMode()) {
+                    // niri never implements zwp_input_method_v1; that is the
+                    // normal state there, not a lost connection.
+                    return;
+                }
                 qCDebug(PlasmaKeyboard) << "Connection to the Wayland compositor has been lost; exiting plasma-keyboard.";
                 QCoreApplication::quit();
             }
