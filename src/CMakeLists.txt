@@ -6,111 +6,6 @@
 
 configure_file(config-plasma-keyboard.h.cmake ${CMAKE_CURRENT_BINARY_DIR}/config-plasma-keyboard.h)
 
-# The speech recognition engines come from whisper.cpp: it provides libwhisper
-# and libparakeet (the Parakeet engine lives in the same repository) under the
-# MIT license. It is built together with the keyboard, so the package does not
-# depend on the whisper-cpp package, which does not exist on every target
-# system (the Arch snapshot the release is built against does not ship it).
-# WHISPER_CPP_SOURCE_DIR lets the package build use a source archive instead of
-# a git checkout, which keeps the release build offline.
-#
-# The subproject is excluded from the install rules (CMake 3.28 and newer): it
-# carries install() rules of its own for the headers, the CMake package files
-# and the libraries, and none of them belong to this package. Its libraries are
-# still built, because the keyboard links against them.
-#
-# They are linked in statically, which is why BUILD_SHARED_LIBS is turned off
-# before the subproject is added: KDECMakeSettings turns shared libraries on
-# globally, and a shared build would leave the keyboard looking for
-# libwhisper.so and libggml*.so at run time, where the package has none.
-# The variable is set for the subproject only and unset again right after it:
-# a cache-wide "FORCE" would also turn this project's own libraries
-# (libkeyboardlib, libbreezestyle) into static archives.
-include(FetchContent)
-set(BUILD_SHARED_LIBS OFF)
-set(WHISPER_CPP_SOURCE_DIR "" CACHE PATH "Local whisper.cpp source tree used instead of downloading one")
-if(WHISPER_CPP_SOURCE_DIR)
-    set(FETCHCONTENT_SOURCE_DIR_WHISPER "${WHISPER_CPP_SOURCE_DIR}" CACHE PATH "" FORCE)
-endif()
-set(WHISPER_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(WHISPER_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(WHISPER_BUILD_SERVER OFF CACHE BOOL "" FORCE)
-set(WHISPER_BUILD_IS_DEV OFF CACHE BOOL "" FORCE)
-set(WHISPER_ALL_WARNINGS OFF CACHE BOOL "" FORCE)
-set(_whisper_exclude_from_all)
-if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.28)
-    set(_whisper_exclude_from_all EXCLUDE_FROM_ALL)
-endif()
-FetchContent_Declare(whisper
-    GIT_REPOSITORY https://github.com/ggml-org/whisper.cpp.git
-    GIT_TAG v1.9.3
-    GIT_SHALLOW TRUE
-    ${_whisper_exclude_from_all}
-)
-FetchContent_MakeAvailable(whisper)
-unset(BUILD_SHARED_LIBS)
-
-# KDECompilerSettings builds the project without C++ exceptions, but the GGUF
-# reader inside whisper.cpp uses try/catch blocks, so the libraries that come
-# from there need the exceptions back.
-foreach(whisper_target ggml ggml-base ggml-cpu ggml-blas ggml-openmp whisper parakeet)
-    if(TARGET ${whisper_target})
-        target_compile_options(${whisper_target} PRIVATE -fexceptions)
-    endif()
-endforeach()
-
-# The GigaAM engine uses transcribe.cpp (MIT), which is built as a library of
-# its own instead of being added as a subproject: it vendors its own copy of
-# ggml, whose target and symbol names would collide with the ggml whisper.cpp
-# brings into the keyboard. The library is loaded while the application runs
-# (src/stt/gigaamengine.cpp) and installed next to the keyboard, so the engine
-# reports itself unavailable when it is not there.
-#
-# TRANSCRIBE_CPP_SOURCE_DIR lets the package build use a source archive instead
-# of a git checkout, the same way WHISPER_CPP_SOURCE_DIR does.
-include(ExternalProject)
-set(TRANSCRIBE_CPP_SOURCE_DIR "" CACHE PATH "Local transcribe.cpp source tree used instead of downloading one")
-set(_transcribe_cpp_prefix ${CMAKE_CURRENT_BINARY_DIR}/transcribe-cpp)
-set(_transcribe_cpp_install ${_transcribe_cpp_prefix}/install)
-# The subproject installs its libraries next to the keyboard, so it needs the
-# name of the library directory (lib or lib64). Only the name is used: the
-# macro that configures the packages hands KDE_INSTALL_LIBDIR over as an
-# absolute path, and passing that on would make the subproject install into
-# that path directly, ignoring the prefix of this build.
-get_filename_component(_transcribe_cpp_libdir ${KDE_INSTALL_FULL_LIBDIR} NAME)
-if(TRANSCRIBE_CPP_SOURCE_DIR)
-    set(_transcribe_cpp_source SOURCE_DIR ${TRANSCRIBE_CPP_SOURCE_DIR})
-else()
-    set(_transcribe_cpp_source
-        GIT_REPOSITORY https://github.com/handy-computer/transcribe.cpp.git
-        GIT_TAG 5bb2deb2a4afb1fd50534ecb51cfcb521ef94944
-        GIT_SHALLOW FALSE
-    )
-endif()
-ExternalProject_Add(transcribe_cpp
-    ${_transcribe_cpp_source}
-    PREFIX ${_transcribe_cpp_prefix}
-    CMAKE_ARGS
-        -DCMAKE_BUILD_TYPE=Release
-        -DCMAKE_INSTALL_PREFIX=${_transcribe_cpp_install}
-        # The library directory of the packages (lib64 on Fedora, lib on Arch),
-        # so the libraries land in the directory this project installs into.
-        -DCMAKE_INSTALL_LIBDIR=${_transcribe_cpp_libdir}
-        "-DCMAKE_INSTALL_RPATH=\$ORIGIN"
-        -DTRANSCRIBE_BUILD_SHARED=ON
-        -DTRANSCRIBE_INSTALL=ON
-        -DTRANSCRIBE_BUILD_TESTS=OFF
-        -DTRANSCRIBE_BUILD_EXAMPLES=OFF
-        -DTRANSCRIBE_BUILD_TOOLS=OFF
-        # The system BLAS probe of transcribe.cpp finds the reference libblas
-        # and then cannot resolve the cblas symbols, so the decoder runs
-        # without system BLAS. That is fast enough for the keyboard.
-        -DTRANSCRIBE_USE_SYSTEM_BLAS=OFF
-    BUILD_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --target transcribe
-    INSTALL_COMMAND ${CMAKE_COMMAND} --install <BINARY_DIR>
-    UPDATE_COMMAND ""
-    LOG_BUILD ON
-)
 
 add_executable(plasma-keyboard-custom)
 
@@ -197,21 +92,6 @@ target_sources(plasma-keyboard-custom PRIVATE
     prediction/wordlookup.h
     prediction/wordpredictor.cpp
     prediction/wordpredictor.h
-    stt/sttaudiorecorder.cpp
-    stt/sttaudiorecorder.h
-    stt/sttengine.cpp
-    stt/sttengine.h
-    stt/sttmodelcatalog.cpp
-    stt/sttmodelcatalog.h
-    stt/stt.qrc
-    stt/gigaamengine.cpp
-    stt/gigaamengine.h
-    stt/parakeetengine.cpp
-    stt/parakeetengine.h
-    stt/whisperengine.cpp
-    stt/whisperengine.h
-    stt/voskengine.cpp
-    stt/voskengine.h
     stt/sttmanager.cpp
     stt/sttmanager.h
 )
@@ -297,10 +177,7 @@ target_link_libraries(plasma-keyboard-custom
     Qt::DBus
     Qt::Gui
     Qt::GuiPrivate
-    Qt::Multimedia
     Qt::VirtualKeyboard
-    parakeet
-    whisper
     swipekb_engine
     Qt::WaylandClient
     Qt::WaylandClientPrivate
@@ -321,23 +198,8 @@ endif()
 # libhunspell is an optional dependency: the engine loads it while the
 # application runs, so nothing is linked against it here.
 
-# The GigaAM engine loads libtranscribe while it runs and looks for it in the
-# directory the keyboard itself is installed into first: a local build keeps
-# the library in the same prefix, which is not part of the loader search path.
-target_compile_definitions(plasma-keyboard-custom PRIVATE TRANSCRIBE_LIBRARY_DIR="${KDE_INSTALL_FULL_LIBDIR}")
-add_dependencies(plasma-keyboard-custom transcribe_cpp)
-
 install(TARGETS plasma-keyboard-custom ${KDE_INSTALL_TARGETS_DEFAULT_ARGS})
 install(PROGRAMS org.kde.plasma.keyboard.custom.desktop DESTINATION ${KDE_INSTALL_APPDIR})
-
-# The transcribe.cpp libraries (libtranscribe and the ggml it carries) belong
-# to the keyboard: they are installed next to the binary.
-install(DIRECTORY ${_transcribe_cpp_install}/${_transcribe_cpp_libdir}/
-    DESTINATION ${KDE_INSTALL_LIBDIR}
-    FILES_MATCHING
-    PATTERN "libtranscribe.so*"
-    PATTERN "libggml*.so*"
-)
 
 add_subdirectory(styles)
 add_subdirectory(qmlplugin)

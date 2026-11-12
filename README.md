@@ -548,29 +548,24 @@ gamepad keep working as before.
 
 The swipe model and its credits are described in `src/swipekb/model/NOTICE.md`.
 
-## Voice input (local speech recognition)
+## Voice input (Handy)
 
-The keyboard can recognise speech **locally**: the audio never leaves the machine and no internet connection is needed. The feature is off by default; it is turned on and set up on the **Voice input** page of the virtual keyboard settings, where the models are downloaded as well.
+The keyboard itself does not recognise speech. The microphone key next to the
+space bar drives [Handy](https://github.com/cjpais/Handy), a separate offline
+dictation application: Handy owns the microphone, the models, the voice activity
+detection and the insertion of the recognised text, and the keyboard only
+toggles its recording.
 
-Engines (chosen in the settings):
+- Turn the feature on in the settings (afterwards the microphone key appears
+  next to the space bar). It opens the voice mode with one large microphone
+  button; the gamepad drives it the same way it drives the ordinary keyboard.
+- Install Handy and keep it running (start it with the session). On Wayland it
+  needs `wtype` to type the text into the focused application; on niri, set
+  Handy's *Overlay Position* to *None* so its overlay does not take the focus.
+- Models (including Parakeet Ultra), the recognition language, the microphone
+  and any post-processing are configured in Handy, not in this settings module.
+  The keyboard follows whatever Handy is set to.
 
-| Engine | What it is | Language |
-|---|---|---|
-| **Parakeet v3** (default) | NVIDIA Parakeet TDT 0.6B v3 through `libparakeet` from whisper.cpp; fast, with the quality of a large model | 25 languages, Russian and English included; the language is detected |
-| **Whisper** | whisper.cpp (`libwhisper`), the classic model | taken from the keyboard layout, or fixed in the settings |
-| **Vosk** | `libvosk` from the `vosk-api` package; the smallest models | decided by the model |
-
-Models are downloaded with the **Download** button on the same page (and removed with **Remove**) into `~/.local/share/plasma-keyboard/stt/<engine>/<model>/`. Available: Parakeet v3 q8_0/q4_k, Whisper small/medium, and Vosk models for Russian, English, German, French, Spanish, Italian, Ukrainian and Portuguese.
-
-To dictate: a **microphone key** appears next to the space bar. It opens the voice mode — one big microphone button in the middle; the first tap starts recording, the second stops it and inserts the recognised text into the focused field. The mode stays open until you leave it yourself with the arrow in the top right corner (next to it is the key that hides the keyboard). The keys that are still needed while dictating are kept under the microphone: the layout switch, the space bar (showing the language), Enter and Backspace.
-
-The gamepad drives the voice mode the same way it drives the ordinary keyboard: the **D-pad** moves the highlight over the seven controls — the big microphone button, the row under it (layout, space, Enter, Backspace) and the corner buttons (hide the keyboard, go back to the keyboard); **A** presses the highlighted one, **B** leaves the voice mode for the ordinary keyboard, **Start** hides the keyboard, and **X**/**Y**/**RT**/**RB** keep their usual meaning (backspace, space, Enter, layout switch). Every control carries the glyph of the gamepad button that presses it.
-
-Notes:
-
-- Whisper and Parakeet are built together with the keyboard (whisper.cpp sources, MIT license) — no separate packages are needed.
-- Vosk only works when `vosk-api` (`libvosk`) is installed; without it the engine is simply unavailable and the others keep working.
-- Model licenses: Parakeet v3 — CC-BY-4.0, Whisper — MIT, Vosk — Apache-2.0.
 
 ## Troubleshooting
 

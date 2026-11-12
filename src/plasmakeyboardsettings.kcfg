@@ -173,25 +173,5 @@
             <label>Whether voice input (local speech recognition) is available on the keyboard.</label>
             <default>false</default>
         </entry>
-        <entry key="sttEngine" type="String">
-            <label>Speech recognition engine: parakeet, whisper, gigaam or vosk.</label>
-            <default>parakeet</default>
-        </entry>
-        <entry key="sttModelPaths" type="String">
-            <label>Model used by each speech recognition engine, one "engine=path" pair per line. An engine without a pair uses the first model installed for it.</label>
-            <default></default>
-        </entry>
-        <entry key="sttLanguageMode" type="String">
-            <label>Where the recognition language comes from: keyboard (the active layout) or fixed.</label>
-            <default>keyboard</default>
-        </entry>
-        <entry key="sttLanguage" type="String">
-            <label>Language used for the recognition when the language mode is fixed.</label>
-            <default></default>
-        </entry>
-        <entry key="sttInputDevice" type="String">
-            <label>Microphone used for the speech recognition. An empty value uses the default input device.</label>
-            <default></default>
-        </entry>
     </group>
 </kcfg>

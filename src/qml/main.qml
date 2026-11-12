@@ -225,18 +225,6 @@ InputPanelWindow {
         }
     }
 
-    //! The recognised phrase is inserted into the field the keyboard types into.
-    //! The voice mode stays open: leaving it is up to the user, who does it with
-    //! the arrow in the corner.
-    Connections {
-        target: PlasmaKeyboard.Stt
-        function onTextRecognized(text) {
-            if (root.auxiliaryUiAllowed && text.length > 0) {
-                thing.commitText(text);
-            }
-        }
-    }
-
     Connections {
         target: inputPanel.InputContext
         function onLocaleChanged() {

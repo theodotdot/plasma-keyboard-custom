@@ -1,79 +1,38 @@
 /*
-    SPDX-FileCopyrightText: 2026 Aleksandr Kvintilyanov <bednyj.mops@gmail.com>
+    SPDX-FileCopyrightText: 2026 Plasma Keyboard contributors
 
     SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 */
 
 #include "sttmanager.h"
 
-#include "gigaamengine.h"
-#include "parakeetengine.h"
-#include "sttaudiorecorder.h"
-#include "sttengine.h"
-#include "sttmodelcatalog.h"
-#include "voskengine.h"
-#include "whisperengine.h"
-
+#include "logging.h"
 #include "plasmakeyboardsettings.h"
 
-#include <KLocalizedString>
-#include <QDir>
-#include <QFileInfo>
-#include <QLoggingCategory>
-#include <QMetaObject>
+#include <QProcess>
 #include <QStandardPaths>
-#include <QThread>
-#include <QtConcurrent/QtConcurrentRun>
 
-Q_LOGGING_CATEGORY(lcStt, "org.kde.plasma.keyboard.custom.stt")
+namespace
+{
+//! Handy transcribes and pastes after the recording stops; until then the
+//! voice mode shows its busy state. It does not report when it is done, so the
+//! state falls back on its own after this long.
+constexpr int settleDelayMs = 4000;
+
+const QString handyBinary()
+{
+    return QStandardPaths::findExecutable(QStringLiteral("handy"));
+}
+}
 
 namespace PlasmaKeyboardStt
 {
 
-SttManager *SttManager::s_instance = nullptr;
-
 SttManager::SttManager(QObject *parent)
     : QObject(parent)
-    , m_recorder(new SttAudioRecorder(this))
 {
-    s_instance = this;
-    // One recognition at a time: the engine keeps one loaded model and is not
-    // thread safe for parallel calls.
-    m_pool.setMaxThreadCount(1);
-
-    connect(m_recorder, &SttAudioRecorder::levelChanged, this, &SttManager::levelChanged);
-    connect(m_recorder, &SttAudioRecorder::recordingChanged, this, &SttManager::recordingChanged);
-    connect(m_recorder, &SttAudioRecorder::errorOccurred, this, &SttManager::handleRecorderError);
-
-    // Downloading or removing a model changes whether the engine can be used.
-    connect(SttModelCatalog::instance(), &SttModelCatalog::changed, this, [this]() {
-        m_modelDirty = true;
-        Q_EMIT stateChanged();
-    });
-
-    createEngine();
-}
-
-SttManager::~SttManager()
-{
-    if (s_instance == this) {
-        s_instance = nullptr;
-    }
-}
-
-SttManager *SttManager::instance()
-{
-    return s_instance;
-}
-
-QString SttManager::defaultEngineId()
-{
-    return QStringLiteral("parakeet");
-}
-
-QStringList SttManager::engineIds()
-{
-    return {QStringLiteral("parakeet"), QStringLiteral("whisper"), QStringLiteral("gigaam"), QStringLiteral("vosk")};
+    m_settleTimer.setSingleShot(true);
+    connect(&m_settleTimer, &QTimer::timeout, this, &SttManager::settle);
 }
 
 bool SttManager::isEnabled() const
@@ -83,33 +42,23 @@ bool SttManager::isEnabled() const
 
 void SttManager::setEnabled(bool enabled)
 {
-    if (isEnabled() == enabled) {
+    if (enabled == isEnabled()) {
         return;
     }
     PlasmaKeyboardSettings::self()->setSttEnabled(enabled);
-    if (!enabled) {
-        cancel();
-    }
+    PlasmaKeyboardSettings::self()->save();
     Q_EMIT enabledChanged();
     Q_EMIT stateChanged();
 }
 
 bool SttManager::isAvailable() const
 {
-    if (!m_engine) {
-        return false;
-    }
-    QString reason;
-    if (!m_engine->isAvailable(&reason)) {
-        return false;
-    }
-    const QString path = modelPath();
-    return !path.isEmpty() && QFileInfo::exists(path);
+    return !handyBinary().isEmpty();
 }
 
 bool SttManager::isRecording() const
 {
-    return m_recorder->isRecording();
+    return m_recording;
 }
 
 bool SttManager::isBusy() const
@@ -119,60 +68,7 @@ bool SttManager::isBusy() const
 
 qreal SttManager::level() const
 {
-    return m_recorder->level();
-}
-
-QString SttManager::engineId() const
-{
-    const QString configured = PlasmaKeyboardSettings::self()->sttEngine();
-    if (configured.isEmpty()) {
-        return defaultEngineId();
-    }
-    return configured;
-}
-
-void SttManager::setEngineId(const QString &engineId)
-{
-    if (this->engineId() == engineId) {
-        return;
-    }
-    PlasmaKeyboardSettings::self()->setSttEngine(engineId);
-    if (!m_busy) {
-        createEngine();
-    }
-    Q_EMIT engineIdChanged();
-    Q_EMIT stateChanged();
-}
-
-QString SttManager::engineName() const
-{
-    return m_engine ? m_engine->displayName() : QString();
-}
-
-QString SttManager::modelPath() const
-{
-    // The model the user picked for the engine; when it is gone, the first
-    // installed model of the engine is used instead.
-    return SttModelCatalog::activeModelPath(engineId());
-}
-
-void SttManager::setModelPath(const QString &modelPath)
-{
-    if (this->modelPath() == modelPath) {
-        return;
-    }
-    SttModelCatalog::setActiveModelPath(engineId(), modelPath);
-    m_modelDirty = true;
-    Q_EMIT modelPathChanged();
-    Q_EMIT stateChanged();
-}
-
-QString SttManager::language() const
-{
-    if (PlasmaKeyboardSettings::self()->sttLanguageMode() == QLatin1String("fixed")) {
-        return PlasmaKeyboardSettings::self()->sttLanguage();
-    }
-    return m_keyboardLanguage;
+    return 0;
 }
 
 QString SttManager::lastError() const
@@ -182,161 +78,91 @@ QString SttManager::lastError() const
 
 void SttManager::startRecording(const QString &keyboardLanguage)
 {
-    if (!isEnabled()) {
-        setLastError(i18nd("plasma-keyboard-custom", "The voice input is disabled in the keyboard settings."));
+    Q_UNUSED(keyboardLanguage)
+
+    if (m_recording) {
         return;
     }
-    if (isRecording() || isBusy()) {
+    if (!isAvailable()) {
+        setLastError(tr("Voice input needs the Handy dictation service, which is not installed."));
+        return;
+    }
+    if (isBusy()) {
+        // Still transcribing the previous phrase.
+        return;
+    }
+    if (!runHandy({QStringLiteral("--toggle-transcription")})) {
         return;
     }
 
-    m_keyboardLanguage = keyboardLanguage;
-    Q_EMIT languageChanged();
-
-    const QString path = modelPath();
-    if (path.isEmpty() || !QFileInfo::exists(path)) {
-        setLastError(i18nd("plasma-keyboard-custom", "No speech recognition model is installed. Download one in the keyboard settings."));
-        return;
-    }
-
-    QString error;
-    if (!m_recorder->start(PlasmaKeyboardSettings::self()->sttInputDevice(), &error)) {
-        setLastError(error);
-        return;
-    }
     setLastError(QString());
+    m_recording = true;
+    Q_EMIT recordingChanged();
+    Q_EMIT stateChanged();
 }
 
 void SttManager::stopRecording()
 {
-    if (!m_recorder->isRecording()) {
+    if (!m_recording) {
         return;
     }
+    runHandy({QStringLiteral("--toggle-transcription")});
 
-    const QVector<float> samples = m_recorder->stop();
-    if (samples.isEmpty()) {
-        setLastError(i18nd("plasma-keyboard-custom", "Nothing was recorded."));
-        return;
-    }
-
+    m_recording = false;
     m_busy = true;
+    Q_EMIT recordingChanged();
     Q_EMIT busyChanged();
-
-    auto *watcher = new QFutureWatcher<QString>(this);
-    connect(watcher, &QFutureWatcher<QString>::finished, this, [this, watcher]() {
-        const QString text = watcher->result();
-        watcher->deleteLater();
-        m_busy = false;
-        Q_EMIT busyChanged();
-        if (!text.isEmpty()) {
-            Q_EMIT textRecognized(text);
-        }
-    });
-    watcher->setFuture(QtConcurrent::run(&m_pool, [this, samples]() {
-        return recognize(samples);
-    }));
+    Q_EMIT stateChanged();
+    m_settleTimer.start(settleDelayMs);
 }
 
 void SttManager::cancel()
 {
-    if (m_recorder->isRecording()) {
-        m_recorder->cancel();
+    m_settleTimer.stop();
+    if (m_recording) {
+        runHandy({QStringLiteral("--cancel")});
     }
+    m_recording = false;
+    m_busy = false;
+    Q_EMIT recordingChanged();
+    Q_EMIT busyChanged();
+    Q_EMIT stateChanged();
 }
 
-void SttManager::reloadModel()
+void SttManager::settle()
 {
-    if (m_busy) {
+    if (!m_busy) {
         return;
     }
-    if (m_engine) {
-        m_engine->unloadModel();
-    }
-    m_modelDirty = true;
+    m_busy = false;
+    Q_EMIT busyChanged();
     Q_EMIT stateChanged();
 }
 
-void SttManager::createEngine()
+bool SttManager::runHandy(const QStringList &arguments)
 {
-    const QString id = engineId();
-    SttEngine *engine = nullptr;
-    if (id == QLatin1String("parakeet")) {
-        engine = new ParakeetEngine(this);
-    } else if (id == QLatin1String("whisper")) {
-        engine = new WhisperEngine(this);
-    } else if (id == QLatin1String("gigaam")) {
-        engine = new GigaamEngine(this);
-    } else if (id == QLatin1String("vosk")) {
-        engine = new VoskEngine(this);
-    } else {
-        qCWarning(lcStt) << "unknown speech recognition engine" << id << ", falling back to parakeet";
-        engine = new ParakeetEngine(this);
+    const QString binary = handyBinary();
+    if (binary.isEmpty()) {
+        setLastError(tr("Voice input needs the Handy dictation service, which is not installed."));
+        return false;
     }
 
-    if (m_engine) {
-        m_engine->unloadModel();
-        m_engine->deleteLater();
+    if (!QProcess::startDetached(binary, arguments)) {
+        setLastError(tr("Could not start Handy."));
+        return false;
     }
-    m_engine = engine;
-    m_modelDirty = true;
-    qCDebug(lcStt) << "speech recognition engine" << m_engine->id() << "selected";
-    Q_EMIT stateChanged();
+    qCDebug(PlasmaKeyboard) << "voice input: handy" << arguments;
+    return true;
 }
 
 void SttManager::setLastError(const QString &message)
 {
-    if (m_lastError == message) {
+    if (message == m_lastError) {
         return;
     }
     m_lastError = message;
-    if (!message.isEmpty()) {
-        qCWarning(lcStt) << message;
-    }
     Q_EMIT lastErrorChanged();
-}
-
-QString SttManager::recognize(const QVector<float> &samples)
-{
-    SttEngine *engine = m_engine;
-    if (!engine) {
-        return QString();
-    }
-
-    if (m_modelDirty || !engine->hasModel()) {
-        QString error;
-        if (!engine->loadModel(modelPath(), &error)) {
-            QMetaObject::invokeMethod(
-                this,
-                [this, error]() {
-                    setLastError(error);
-                },
-                Qt::QueuedConnection);
-            return QString();
-        }
-        m_modelDirty = false;
-    }
-
-    QString error;
-    const QString text = engine->transcribe(samples, language(), &error);
-    if (!error.isEmpty()) {
-        QMetaObject::invokeMethod(
-            this,
-            [this, error]() {
-                setLastError(error);
-            },
-            Qt::QueuedConnection);
-    }
-    return text;
-}
-
-void SttManager::handleRecorderError(const QString &message)
-{
-    setLastError(message);
-    // The recorder reports its length limit through this signal: stop the
-    // recording so what was said is still recognised.
-    if (m_recorder->isRecording()) {
-        stopRecording();
-    }
+    Q_EMIT stateChanged();
 }
 
 } // namespace PlasmaKeyboardStt

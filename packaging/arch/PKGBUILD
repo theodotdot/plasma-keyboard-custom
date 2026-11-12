@@ -8,11 +8,13 @@ url="https://github.com/mops1k/plasma-keyboard-custom"
 license=('MIT' 'LGPL-3.0-or-later' 'GPL-3.0-or-later')
 depends=(
   'qt6-base' 'qt6-declarative' 'qt6-wayland' 'qt6-virtualkeyboard'
-  'qt6-multimedia' 'qt6-svg' 'layer-shell-qt'
+  'qt6-svg' 'layer-shell-qt'
   'kcoreaddons' 'kconfig' 'ki18n' 'kcrash' 'kglobalaccel' 'kirigami'
   'plasma-integration'
 )
 makedepends=('cmake' 'extra-cmake-modules' 'ninja' 'qt6-wayland' 'wayland-protocols' 'gettext' 'pkgconf')
+optdepends=('handy: dictation backend for the microphone key'
+            'wtype: text insertion for Handy on Wayland')
 source=()
 
 build() {

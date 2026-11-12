@@ -226,30 +226,6 @@ target_include_directories(hunspelldictionarytest PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/prediction
 )
 
-# The speech recognition engines. The models are not in the repository, so the
-# recognition itself is skipped unless the test environment points at them; the
-# engines and the recorder are still checked.
-ecm_add_test(sttenginestest.cpp
-    ../src/stt/sttengine.cpp
-    ../src/stt/parakeetengine.cpp
-    ../src/stt/whisperengine.cpp
-    ../src/stt/gigaamengine.cpp
-    ../src/stt/voskengine.cpp
-    ../src/stt/sttaudiorecorder.cpp
-    TEST_NAME sttenginestest
-    LINK_LIBRARIES
-        KF6::I18n
-        Qt::Core
-        Qt::Multimedia
-        Qt::Test
-        parakeet
-        whisper
-)
-
-target_include_directories(sttenginestest PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/stt
-)
-
 # The swipe engine (src/swipekb) on a synthetic finger path through the key
 # grid, with the word lists generated at build time from the predictive lists.
 ecm_add_test(swipeenginetest.cpp

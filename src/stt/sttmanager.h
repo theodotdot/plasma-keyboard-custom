@@ -1,34 +1,28 @@
 /*
-    SPDX-FileCopyrightText: 2026 Aleksandr Kvintilyanov <bednyj.mops@gmail.com>
+    SPDX-FileCopyrightText: 2026 Plasma Keyboard contributors
 
     SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 */
 
 #pragma once
 
-#include <QFutureWatcher>
 #include <QObject>
 #include <QString>
-#include <QThreadPool>
-#include <QVector>
+#include <QTimer>
 
 namespace PlasmaKeyboardStt
 {
 
-class SttAudioRecorder;
-class SttEngine;
-
 /**
- * The speech recognition the keyboard offers.
+ * The voice input of the keyboard, delegated to the Handy dictation service.
  *
- * It owns the microphone recorder and the selected engine, keeps them in sync
- * with the settings and runs the recognition on a worker thread, so the
- * keyboard keeps responding while a phrase is recognised. The recognised text
- * is handed over with textRecognized(); the keyboard inserts it into the field
- * it types into.
+ * Handy owns the microphone, the models, the voice activity detection and the
+ * insertion of the recognised text; it is driven through its command line
+ * (`handy --toggle-transcription`), which talks to the running instance.
  *
- * The whole feature is optional: with `sttEnabled` off nothing is recorded and
- * no model is loaded.
+ * The keyboard therefore keeps no speech recognition of its own: it only
+ * tracks the state the microphone key and the voice mode draw, and forwards
+ * the errors Handy cannot report back (a missing binary, a failed launch).
  */
 class SttManager : public QObject
 {
@@ -38,63 +32,36 @@ class SttManager : public QObject
     Q_PROPERTY(bool recording READ isRecording NOTIFY recordingChanged)
     Q_PROPERTY(bool busy READ isBusy NOTIFY busyChanged)
     Q_PROPERTY(qreal level READ level NOTIFY levelChanged)
-    Q_PROPERTY(QString engineId READ engineId WRITE setEngineId NOTIFY engineIdChanged)
-    Q_PROPERTY(QString engineName READ engineName NOTIFY stateChanged)
-    Q_PROPERTY(QString modelPath READ modelPath WRITE setModelPath NOTIFY modelPathChanged)
-    Q_PROPERTY(QString language READ language NOTIFY languageChanged)
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
 
 public:
     explicit SttManager(QObject *parent = nullptr);
-    ~SttManager() override;
-
-    static SttManager *instance();
 
     bool isEnabled() const;
     void setEnabled(bool enabled);
 
-    /*! Whether the selected engine can be used right now (library present, model set). */
+    /*! Whether the Handy command line is installed. */
     bool isAvailable() const;
 
     bool isRecording() const;
     bool isBusy() const;
+
+    /*! Always 0: Handy does not report its microphone level. */
     qreal level() const;
-
-    QString engineId() const;
-    void setEngineId(const QString &engineId);
-
-    /*! Human readable name of the selected engine. */
-    QString engineName() const;
-
-    QString modelPath() const;
-    void setModelPath(const QString &modelPath);
-
-    /*! Language for the next recognition: the keyboard layout or the fixed one. */
-    QString language() const;
 
     QString lastError() const;
 
-    /*! Identifier of the engine that is used when nothing is configured. */
-    static QString defaultEngineId();
-
-    /*! Identifiers of all engines this build knows about. */
-    static QStringList engineIds();
-
-    /**
-     * Starts recording. \a keyboardLanguage is the language of the active
-     * keyboard layout; it is used when the language setting says the recognition
-     * follows the keyboard.
+    /*!
+     * Toggles Handy's recording on. \a keyboardLanguage is accepted for API
+     * compatibility and ignored: the recognition language is Handy's setting.
      */
     Q_INVOKABLE void startRecording(const QString &keyboardLanguage = QString());
 
-    /*! Stops recording and recognises what was recorded. */
+    /*! Toggles Handy's recording off; Handy transcribes and inserts the text. */
     Q_INVOKABLE void stopRecording();
 
-    /*! Stops recording and throws the audio away. */
+    /*! Cancels a recording or a transcription in progress. */
     Q_INVOKABLE void cancel();
-
-    /*! Drops the loaded model, so the next recognition loads it again. */
-    Q_INVOKABLE void reloadModel();
 
 Q_SIGNALS:
     void enabledChanged();
@@ -102,27 +69,17 @@ Q_SIGNALS:
     void recordingChanged();
     void busyChanged();
     void levelChanged();
-    void engineIdChanged();
-    void modelPathChanged();
-    void languageChanged();
     void lastErrorChanged();
-    void textRecognized(const QString &text);
 
 private:
-    void createEngine();
+    bool runHandy(const QStringList &arguments);
     void setLastError(const QString &message);
-    QString recognize(const QVector<float> &samples);
-    void handleRecorderError(const QString &message);
+    void settle();
 
-    static SttManager *s_instance;
-
-    SttAudioRecorder *m_recorder = nullptr;
-    SttEngine *m_engine = nullptr;
-    QThreadPool m_pool;
-    QString m_keyboardLanguage;
-    QString m_lastError;
+    QTimer m_settleTimer;
+    bool m_recording = false;
     bool m_busy = false;
-    bool m_modelDirty = true;
+    QString m_lastError;
 };
 
 } // namespace PlasmaKeyboardStt
