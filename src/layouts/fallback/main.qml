@@ -16,13 +16,6 @@ KeyboardLayout {
 
     KeyboardRow {
         Key {
-            key: Qt.Key_Escape
-            displayText: "Esc"
-            noModifier: true
-            functionKey: true
-            highlighted: true
-        }
-        Key {
             text: pcLayout.symbolsShifted ? "~" : "`"
             alternativeKeys: "`~"
             smallText: pcLayout.symbolsShifted ? "`" : "~"
@@ -105,13 +98,6 @@ KeyboardLayout {
     }
     KeyboardRow {
         Key {
-            key: Qt.Key_Tab
-            displayText: "Tab"
-            noModifier: true
-            functionKey: true
-            highlighted: true
-        }
-        Key {
             id: normalKey
             key: Qt.Key_Q
             text: "q"
@@ -172,15 +158,6 @@ KeyboardLayout {
         }
     }
     KeyboardRow {
-        Key {
-            key: Qt.Key_Delete
-            displayText: "Del"
-            noModifier: true
-            functionKey: true
-            highlighted: true
-            Layout.preferredWidth: normalKeyWidth
-            Layout.fillWidth: false
-        }
         Key {
             key: Qt.Key_A
             text: "a"
@@ -290,35 +267,13 @@ KeyboardLayout {
             weight: normalKeyWidth
             Layout.fillWidth: false
         }
-        Key {
-            key: Qt.Key_Up
-            weight: normalKeyWidth
-            Layout.fillWidth: false
-            displayText: "\u2191"
-            repeat: true
-            noModifier: true
-            functionKey: true
-            highlighted: true
-        }
         PlasmaKeyboard.HideKey {
             weight: normalKeyWidth
             Layout.fillWidth: false
         }
     }
     KeyboardRow {
-        PlasmaKeyboard.ModifierKey {
-            modifier: "ctrl"
-            displayText: "Ctrl"
-            weight: normalKeyWidth
-            Layout.fillWidth: false
-        }
         SymbolModeKey {
-            weight: normalKeyWidth
-            Layout.fillWidth: false
-        }
-        PlasmaKeyboard.ModifierKey {
-            modifier: "meta"
-            displayText: "Win"
             weight: normalKeyWidth
             Layout.fillWidth: false
         }
@@ -335,42 +290,6 @@ KeyboardLayout {
         PlasmaKeyboard.MicrophoneKey {
             weight: normalKeyWidth
             Layout.fillWidth: false
-        }
-        PlasmaKeyboard.ModifierKey {
-            modifier: "alt"
-            displayText: "Alt"
-            weight: normalKeyWidth
-            Layout.fillWidth: false
-        }
-        Key {
-            key: Qt.Key_Left
-            weight: normalKeyWidth
-            Layout.fillWidth: false
-            displayText: "\u2190"
-            repeat: true
-            noModifier: true
-            functionKey: true
-            highlighted: true
-        }
-        Key {
-            key: Qt.Key_Down
-            weight: normalKeyWidth
-            Layout.fillWidth: false
-            displayText: "\u2193"
-            repeat: true
-            noModifier: true
-            functionKey: true
-            highlighted: true
-        }
-        Key {
-            key: Qt.Key_Right
-            weight: normalKeyWidth
-            Layout.fillWidth: false
-            displayText: "\u2192"
-            repeat: true
-            noModifier: true
-            functionKey: true
-            highlighted: true
         }
     }
 }
