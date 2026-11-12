@@ -204,6 +204,10 @@ KeyboardLayout {
             FillerKey {
             }
         }
+        EnterKey {
+            weight: functionKeyWidth
+            Layout.fillWidth: false
+        }
     }
     KeyboardRow {
         ShiftKey {
@@ -280,10 +284,6 @@ KeyboardLayout {
         }
         HideKeyboardKey {
             weight: normalKeyWidth
-            Layout.fillWidth: false
-        }
-        EnterKey {
-            weight: functionKeyWidth
             Layout.fillWidth: false
         }
     }
