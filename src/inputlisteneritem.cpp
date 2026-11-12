@@ -1175,10 +1175,19 @@ void InputListenerItem::keyPressEvent(QKeyEvent *event)
     if (plasmaKeyboardNiriMode()) {
         // No input-method context to carry the key: send it as a real key
         // through the uinput device, which reaches the focused client and the
-        // compositor's own bindings.
-        if (sendUinputKey(event, true)) {
+        // compositor's own bindings. The character itself goes out on release,
+        // so a hold that opens the alternate-keys popup can cancel it first
+        // (Qt Virtual Keyboard sends Key_Cancel through keyEvent() then).
+        if (event->key() == Qt::Key_Cancel) {
+            m_pendingUinput = false;
             event->accept();
+            return;
         }
+        m_pendingUinput = true;
+        m_pendingUinputKey = event->key();
+        m_pendingUinputText = event->text();
+        m_pendingUinputModifiers = event->modifiers();
+        event->accept();
         return;
     }
 
@@ -1258,7 +1267,18 @@ void InputListenerItem::keyReleaseEvent(QKeyEvent *event)
     }
 
     if (plasmaKeyboardNiriMode()) {
-        if (sendUinputKey(event, false)) {
+        if (event->key() == Qt::Key_Cancel) {
+            m_pendingUinput = false;
+            event->accept();
+            return;
+        }
+        if (!m_pendingUinput || event->key() != m_pendingUinputKey) {
+            return;
+        }
+        m_pendingUinput = false;
+        QKeyEvent press(QEvent::KeyPress, m_pendingUinputKey, m_pendingUinputModifiers, m_pendingUinputText);
+        QKeyEvent release(QEvent::KeyRelease, m_pendingUinputKey, m_pendingUinputModifiers, m_pendingUinputText);
+        if (sendUinputKey(&press, true) && sendUinputKey(&release, false)) {
             event->accept();
         }
         return;

@@ -315,6 +315,14 @@ private:
     //! guarded) is a supported state: it just falls back to the older
     //! input-method-v1 path in handleModifiedKey(), same as before this
     //! existed.
+    //! A key pressed through uinput is typed on release instead, so that
+    //! virtualKeyCancel(), which Qt Virtual Keyboard sends when the
+    //! alternate-keys popup opens, can drop the base character.
+    bool m_pendingUinput = false;
+    int m_pendingUinputKey = 0;
+    QString m_pendingUinputText;
+    Qt::KeyboardModifiers m_pendingUinputModifiers;
+
     std::unique_ptr<UinputKeyboard> m_uinput;
     //! Whether each modifier's uinput key is currently pressed down.
     bool m_uinputCtrlHeld = false;
