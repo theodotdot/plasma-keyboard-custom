@@ -709,6 +709,11 @@ InputPanelWindow {
         }
         onHideKeyboard: {
             // Start hides the keyboard from anywhere, the voice page included.
+            // On niri nothing else unmaps the layer surface, so the gamepad
+            // action has to do it (Qt.inputMethod.hide() only flips the state).
+            if (plasmaKeyboardNiriMode) {
+                PlasmaKeyboard.KeyboardWindow.setKeyboardWindowMapped(false);
+            }
             Qt.inputMethod.hide();
         }
     }

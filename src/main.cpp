@@ -494,7 +494,7 @@ public:
     //! On niri nothing else drives the keyboard: there is no input-method
     //! context to ask for it and no compositor D-Bus property to follow, so
     //! the toggle owns the mapping.
-    void setKeyboardWindowMapped(bool visible)
+    Q_INVOKABLE void setKeyboardWindowMapped(bool visible)
     {
         if (!m_keyboard) {
             qCWarning(PlasmaKeyboard) << "setKeyboardWindowMapped called before the keyboard window exists";
