@@ -780,6 +780,11 @@ InputPanelWindow {
 
         // Qt Virtual Keyboard has no platform input context on niri; install
         // the application's own, which forwards keys to InputListenerItem.
+        if (plasmaKeyboardNiriMode) {
+            // QWERTY-only on the handheld: hide the language key and stop the
+            // layout switcher, which cannot work with the fixed uinput keymap.
+            VirtualKeyboardSettings.visibleFunctionKeys &= ~QtVirtualKeyboard.KeyboardFunctionKeys.Language;
+        }
         if (plasmaKeyboardNiriMode && inputPanel.InputContext && inputPanel.InputContext.inputEngine) {
             inputPanel.InputContext.inputEngine.inputMethod = PlasmaKeyboard.NiriInputMethod;
         }
