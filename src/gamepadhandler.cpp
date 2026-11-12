@@ -575,9 +575,17 @@ void GamepadHandler::handleAccept(bool pressed)
     m_acceptHoldTimer->stop();
     m_pressedAlternates.clear();
 
-    // The press that is ending already opened the list or took a character, so
-    // it must not type the highlighted key as well. Whether the list is still
-    // up makes no difference here: the next press picks from it.
+    // A hold that opened the alternates list takes the highlighted character
+    // on release, the way Qt Virtual Keyboard's own navigation path does.
+    if (m_alternatesOpened) {
+        m_alternatesOpened = false;
+        m_acceptConsumed = false;
+        Q_EMIT confirmAlternates();
+        return;
+    }
+
+    // The press that is ending already took a character (single alternate), so
+    // it must not type the highlighted key as well.
     const bool consumed = m_acceptConsumed;
     m_acceptConsumed = false;
     if (consumed) {

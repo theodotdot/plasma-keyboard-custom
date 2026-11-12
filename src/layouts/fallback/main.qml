@@ -260,8 +260,6 @@ KeyboardLayout {
             weight: normalKeyWidth
             Layout.fillWidth: false
             text: ","
-            smallText: "\u2699"
-            smallTextVisible: keyboard.isFunctionPopupListAvailable()
             highlighted: true
         }
         SpaceKey {
