@@ -1015,11 +1015,34 @@ bool InputListenerItem::sendUinputKey(QKeyEvent *event, bool press)
         return false;
     }
 
-    const XkbKeyMapper::Match match = mapKeysymOnNiriKeymap(keysyms.first());
+    // An alternate character arrives as a key click whose text is not the key's
+    // own symbol (period with the text "!"), or as Key_unknown with only text
+    // (the gamepad alternates list). The keymap decides what can be typed, so
+    // look the text character up before falling back to the key's keysym.
+    xkb_keysym_t keysym = keysyms.first();
+    const QString eventText = event->text();
+    if (eventText.size() == 1) {
+        const xkb_keysym_t textKeysym = xkb_utf32_to_keysym(eventText.at(0).unicode());
+        if (textKeysym != XKB_KEY_NoSymbol && textKeysym != keysym) {
+            if (mapKeysymOnNiriKeymap(textKeysym).isValid()) {
+                keysym = textKeysym;
+            } else if (eventText.at(0).unicode() > 0x7f) {
+                // No keycode produces this character: it needs the input-method
+                // protocol, which this path does not speak yet.
+                if (press) {
+                    qCWarning(PlasmaKeyboard)
+                        << QStringLiteral("Keymap cannot produce alternate \"%1\" - key dropped").arg(eventText);
+                }
+                return false;
+            }
+        }
+    }
+
+    const XkbKeyMapper::Match match = mapKeysymOnNiriKeymap(keysym);
     if (!match.isValid()) {
         if (press) {
             qCWarning(PlasmaKeyboard)
-                << QStringLiteral("No keycode on the niri keymap for keysym 0x%1, text \"%2\" - key dropped").arg(keysyms.first(), 0, 16).arg(event->text());
+                << QStringLiteral("No keycode on the niri keymap for keysym 0x%1, text \"%2\" - key dropped").arg(keysym, 0, 16).arg(event->text());
         }
         return false;
     }
