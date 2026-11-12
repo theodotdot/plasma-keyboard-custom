@@ -17,6 +17,8 @@
 
 #include <xkbcommon/xkbcommon-compose.h>
 
+#include <functional>
+
 class InputPlugin;
 
 /**
@@ -143,6 +145,16 @@ public:
      */
     void setInputEngine(QVirtualKeyboardInputEngine *engine);
 
+    /**
+     * Transport for committed text when there is no input-method context.
+     *
+     * Without input-method-unstable-v1 (niri) InputPlugin::commit() has no
+     * context to send commit_string on and silently drops the text, so the
+     * alternate-keys list and candidates would insert nothing. The panel wires
+     * this to InputListenerItem::commitText(), which types through uinput.
+     */
+    void setTextCommitter(std::function<void(const QString &)> committer);
+
 public Q_SLOTS:
     /**
      * Insert one alternate character of the highlighted key.
@@ -254,6 +266,7 @@ private:
     void setOverlayVisible(bool visible);
 
     InputPlugin *m_inputPlugin = nullptr;
+    std::function<void(const QString &)> m_textCommitter;
 
     /**
      * The Qt Virtual Keyboard input engine, when the panel handed one over.

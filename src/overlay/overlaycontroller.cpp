@@ -6,6 +6,7 @@
 
 #include "overlaycontroller.h"
 
+#include "../nirimode.h"
 #include "inputplugin.h"
 #include "logging.h"
 #include "overlaytrigger.h"
@@ -349,6 +350,11 @@ void OverlayController::setInputEngine(QVirtualKeyboardInputEngine *engine)
     m_inputEngine = engine;
 }
 
+void OverlayController::setTextCommitter(std::function<void(const QString &)> committer)
+{
+    m_textCommitter = std::move(committer);
+}
+
 void OverlayController::commitAlternate(const QString &text)
 {
     if (text.isEmpty()) {
@@ -360,7 +366,10 @@ void OverlayController::commitAlternate(const QString &text)
     // ordinary typing. A bare commit_string instead makes a client (an address
     // bar, a search field) treat the input as finished, and the compositor
     // takes the keyboard down with it. Take the same route here.
-    if (m_inputEngine && m_inputEngine->virtualKeyClick(Qt::Key_unknown, text, Qt::KeyboardModifiers())) {
+    // The engine click below needs an input-method context to deliver anything:
+    // with niri there is none, so the character would simply disappear.
+    const bool engineClicked = m_inputEngine && !plasmaKeyboardNiriMode() && m_inputEngine->virtualKeyClick(Qt::Key_unknown, text, Qt::KeyboardModifiers());
+    if (engineClicked) {
         qCDebug(PlasmaKeyboard) << "Committing alternate as a key click:" << text;
         setOverlayVisible(false);
         resetState();
@@ -395,7 +404,10 @@ void OverlayController::commitText(const QString &text)
 
     qCDebug(PlasmaKeyboard) << "Committing overlay selection:" << text << "pendingText" << m_pendingText;
 
-    if (m_inputPlugin) {
+    if (m_textCommitter) {
+        // No input-method context: type the text through the uinput transport.
+        m_textCommitter(text);
+    } else if (m_inputPlugin) {
         // The base character (m_pendingText) is still present in the text field —
         // it was committed on key-press and never retracted. Delete it now and
         // replace it with the selected candidate in one atomic operation:

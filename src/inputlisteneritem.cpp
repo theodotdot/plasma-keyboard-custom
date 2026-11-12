@@ -222,6 +222,13 @@ InputListenerItem::InputListenerItem()
     , m_clipboardHistory(new ClipboardHistory(&m_sessionLockState, this))
     , m_uinput(std::make_unique<UinputKeyboard>(this))
 {
+    // Without input-method-unstable-v1 the plugin has no context to commit on,
+    // so overlay commits (alternates, candidates) go through the same uinput
+    // transport as ordinary keys.
+    m_overlayController->setTextCommitter([this](const QString &text) {
+        commitText(text);
+    });
+
     // Grab and listen to physical keyboard input
     m_input.setGrabbing(true);
 
