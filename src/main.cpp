@@ -893,7 +893,6 @@ public Q_SLOTS:
         qCDebug(PlasmaKeyboard) << "keyboard visible" << keyboardVisible << "keyboard on screen" << keyboardOnScreen << "input method visible"
                                 << QGuiApplication::inputMethod()->isVisible();
 
-        qCDebug(PlasmaKeyboard) << "visibility poll: compositor" << compositorVisible << "change" << (visibilityChange ? (*visibilityChange ? "show" : "hide") : "none");
         // Only edges are commands: a repeated poll must not undo a local hide.
         // During lock, compositor hide is authoritative regardless of the
         // desktop focus-loss preference. The mapped stub survives this hide.
