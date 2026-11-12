@@ -1,0 +1,15 @@
+[Unit]
+Description=Plasma Keyboard (niri backend)
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+Environment=PLASMA_KEYBOARD_NIRI=1
+Environment=QT_QPA_PLATFORMTHEME=kde
+ExecStart=/usr/bin/plasma-keyboard-custom
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

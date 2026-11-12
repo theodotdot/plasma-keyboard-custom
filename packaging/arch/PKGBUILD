@@ -1,0 +1,39 @@
+# Maintainer: deck
+pkgname=plasma-keyboard-custom-niri
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Plasma Keyboard (custom fork) with a niri backend: layer-shell surface, uinput transport, InputPlumber profile swap"
+arch=('aarch64')
+url="https://github.com/mops1k/plasma-keyboard-custom"
+license=('MIT' 'LGPL-3.0-or-later' 'GPL-3.0-or-later')
+depends=(
+  'qt6-base' 'qt6-declarative' 'qt6-wayland' 'qt6-virtualkeyboard'
+  'qt6-multimedia' 'qt6-svg' 'layer-shell-qt'
+  'kcoreaddons' 'kconfig' 'ki18n' 'kcrash' 'kglobalaccel' 'kirigami'
+  'plasma-integration'
+)
+makedepends=('cmake' 'extra-cmake-modules' 'ninja' 'qt6-wayland' 'wayland-protocols' 'gettext' 'pkgconf')
+source=()
+
+build() {
+  local _build="$srcdir/build"
+  # This image has no packaged cmake/ECM; use the local toolchain if present.
+  if [ -x "$HOME/local/bin/cmake" ]; then
+    export PATH="$HOME/local/bin:$PATH"
+    _prefix_path="$HOME/.local"
+  fi
+  cmake -S "$startdir/../.." -B "$_build" -G Ninja \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_PREFIX_PATH="${_prefix_path:-/usr}" \
+    -DBUILD_TESTING=OFF \
+    -DPLASMA_KEYBOARD_SOUND_ENABLED=OFF
+  cmake --build "$_build"
+}
+
+package() {
+  local _build="$srcdir/build"
+  DESTDIR="$pkgdir" cmake --install "$_build"
+  install -Dm644 "$startdir/plasma-keyboard-custom.service" \
+    "$pkgdir/usr/lib/systemd/user/plasma-keyboard-custom.service"
+}
