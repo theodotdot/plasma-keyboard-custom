@@ -1040,7 +1040,10 @@ bool InputListenerItem::sendUinputKey(QKeyEvent *event, bool press)
     // look the text character up before falling back to the key's keysym.
     xkb_keysym_t keysym = keysyms.first();
     const QString eventText = event->text();
-    if (eventText.size() == 1) {
+    // Control characters ("\n" on the Return key) must keep the key's own
+    // keysym: xkb_utf32_to_keysym() maps them to Linefeed and friends, and
+    // clients do not treat those as Enter.
+    if (eventText.size() == 1 && eventText.at(0).isPrint()) {
         const xkb_keysym_t textKeysym = xkb_utf32_to_keysym(eventText.at(0).unicode());
         if (textKeysym != XKB_KEY_NoSymbol && textKeysym != keysym) {
             if (mapKeysymOnNiriKeymap(textKeysym).isValid()) {

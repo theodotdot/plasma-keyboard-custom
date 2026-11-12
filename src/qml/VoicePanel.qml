@@ -54,18 +54,17 @@ Item {
     readonly property real keyHeight: Math.min(height * 0.17, width * 0.11)
 
     // The controls the gamepad walks, in the order of the focus index: the
-    // microphone, then the row under it (language, space, enter, backspace),
+    // microphone, then the row under it (space, enter, backspace),
     // then the corner buttons (hide, back).
     readonly property int microphoneIndex: 0
     readonly property int actionRowFirstIndex: 1
-    readonly property int actionRowCount: 4
+    readonly property int actionRowCount: 3
     readonly property int hideIndex: actionRowFirstIndex + actionRowCount
     readonly property int closeIndex: hideIndex + 1
 
     signal toggleRequested()
     signal closeRequested()
     signal hideRequested()
-    signal languageRequested()
     signal spaceRequested()
     signal enterRequested()
     signal backspaceRequested()
@@ -128,15 +127,12 @@ Item {
             root.toggleRequested();
             break;
         case root.actionRowFirstIndex:
-            root.languageRequested();
-            break;
-        case root.actionRowFirstIndex + 1:
             root.spaceRequested();
             break;
-        case root.actionRowFirstIndex + 2:
+        case root.actionRowFirstIndex + 1:
             root.enterRequested();
             break;
-        case root.actionRowFirstIndex + 3:
+        case root.actionRowFirstIndex + 2:
             root.backspaceRequested();
             break;
         case root.hideIndex:
@@ -354,13 +350,6 @@ Item {
         Repeater {
             model: [
                 {
-                    "kind": "language",
-                    "icon": "globe-symbolic",
-                    "glyph": "RB",
-                    "badgeColor": "#455a64",
-                    "weight": 1.5
-                },
-                {
                     "kind": "space",
                     "icon": "",
                     "glyph": "Y",
@@ -433,9 +422,7 @@ Item {
                     anchors.fill: parent
                     onClicked: {
                         root.focusIndex = root.actionRowFirstIndex + index;
-                        if (modelData.kind === "language") {
-                            root.languageRequested();
-                        } else if (modelData.kind === "space") {
+                        if (modelData.kind === "space") {
                             root.spaceRequested();
                         } else if (modelData.kind === "enter") {
                             root.enterRequested();

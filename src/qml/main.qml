@@ -1668,7 +1668,6 @@ InputPanelWindow {
 
             // The keys kept under the microphone while dictating: the layout
             // switch, the space bar, enter and backspace.
-            onLanguageRequested: inputPanel.keyboard.changeInputLanguage(false)
             onSpaceRequested: thing.commitText(" ")
             onEnterRequested: thing.sendKeyEvent(Qt.Key_Return, "\n")
             onBackspaceRequested: thing.sendKeyEvent(Qt.Key_Backspace, "")
