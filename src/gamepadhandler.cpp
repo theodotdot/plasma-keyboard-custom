@@ -479,6 +479,18 @@ void GamepadHandler::onInputEvent(const QString &event, double value)
         return;
     }
 
+    // LT: a hold shifts everything typed while it is down; a quick tap
+    // toggles shift (one-shot), and two quick taps are caps lock. The panel
+    // owns that decision because it sees the press/release timing.
+    if (event == QLatin1String("ui_l2")) {
+        if (pressed) {
+            Q_EMIT shiftPressed();
+        } else {
+            Q_EMIT shiftReleased();
+        }
+        return;
+    }
+
     // All remaining mappings trigger on press only.
     if (!pressed) {
         return;
@@ -491,9 +503,6 @@ void GamepadHandler::onInputEvent(const QString &event, double value)
     } else if (event == QLatin1String("ui_action")) {
         // Y: space.
         Q_EMIT space();
-    } else if (event == QLatin1String("ui_l2")) {
-        // LT: shift.
-        Q_EMIT toggleShift();
     } else if (event == QLatin1String("ui_l1")) {
         // LB: symbols layer.
         Q_EMIT toggleSymbols();

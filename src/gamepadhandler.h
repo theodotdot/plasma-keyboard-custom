@@ -95,8 +95,10 @@ Q_SIGNALS:
     void space();
     /*! Press Enter/Return. */
     void enter();
-    /*! Toggle the shift state. */
-    void toggleShift();
+    /*! LT pressed: begin a hold-shift (the panel starts shifting after a short delay). */
+    void shiftPressed();
+    /*! LT released: end a hold-shift, or toggle shift when it was a tap. */
+    void shiftReleased();
     /*! Toggle the symbols (&123) layer. */
     void toggleSymbols();
     /*! Switch to the next keyboard layout. */

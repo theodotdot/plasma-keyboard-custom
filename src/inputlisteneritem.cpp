@@ -1028,7 +1028,9 @@ bool InputListenerItem::sendUinputKey(QKeyEvent *event, bool press)
     // 0 for an upper-case character (the lookup folds case) still needs Shift.
     const QString text = event->text();
     const bool textIsUpper = text.size() == 1 && text.at(0).isUpper();
-    const bool needShift = (match.level & 1) || (match.level == 0 && textIsUpper);
+    // The virtual keyboard may express shift only as a modifier while the key
+    // text stays lowercase, so take it from the event as well.
+    const bool needShift = (match.level & 1) || (match.level == 0 && textIsUpper) || event->modifiers().testFlag(Qt::ShiftModifier);
     const bool needAltGr = match.level >= 2;
 
     if (press) {

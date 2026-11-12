@@ -680,13 +680,31 @@ InputPanelWindow {
         onBackspace: thing.sendKeyEvent(Qt.Key_Backspace, "")
         onSpace: thing.sendKeyEvent(Qt.Key_Space, " ")
         onEnter: thing.sendKeyEvent(Qt.Key_Return, "\n")
-        onToggleShift: {
-            // Shift has nothing to shift on the voice page.
-            if (!root.voiceMode) {
-                console.log("DBG toggleShift from gamepad; shiftActive before:", inputPanel.InputContext.shiftActive);
-                inputPanel.InputContext.priv.shiftHandler.toggleShift();
-                console.log("DBG toggleShift done; shiftActive now:", inputPanel.InputContext.shiftActive);
+        onShiftPressed: {
+            // Hold LT to shift everything typed while it is down; a quick tap
+            // is handled on release (one-shot shift, double tap caps lock).
+            if (root.voiceMode) {
+                return;
             }
+            root.shiftHeld = false;
+            shiftHoldTimer.restart();
+        }
+
+        onShiftReleased: {
+            if (root.voiceMode) {
+                return;
+            }
+            shiftHoldTimer.stop();
+            if (root.shiftHeld) {
+                root.shiftHeld = false;
+                if (!inputPanel.InputContext.capsLockActive) {
+                    inputPanel.InputContext.priv.shiftHandler.shiftActive = false;
+                }
+                return;
+            }
+            // Quick tap: the virtual keyboard's own shift logic, which is
+            // one-shot on a tap and caps lock on a double tap.
+            inputPanel.InputContext.priv.shiftHandler.toggleShift();
         }
         onToggleSymbols: {
             // The symbols layer is hidden behind the voice page as well.
@@ -721,6 +739,33 @@ InputPanelWindow {
     }
 
     // Play the key click at full volume: the bundled sound is mastered quiet.
+    //! True while LT is held past the hold threshold.
+    property bool shiftHeld: false
+
+    Timer {
+        id: shiftHoldTimer
+        interval: 220
+        onTriggered: {
+            root.shiftHeld = true;
+            inputPanel.InputContext.priv.shiftHandler.shiftActive = true;
+        }
+    }
+
+    Connections {
+        target: inputPanel.InputContext.inputEngine
+        function onVirtualKeyClicked(key, text, modifiers, isAutoRepeat) {
+            // One-shot shift: a typed key drops a manual shift, the way the
+            // platform-driven path does through ShiftHandler::reset(). While
+            // LT is held the shift stays on for every key.
+            if (!root.shiftHeld && InputContext.shiftActive && !InputContext.capsLockActive
+                    && key !== Qt.Key_Shift && key !== Qt.Key_CapsLock
+                    && key !== Qt.Key_Control && key !== Qt.Key_Alt
+                    && key !== Qt.Key_AltGr && key !== Qt.Key_Meta) {
+                InputContext.priv.shiftHandler.shiftActive = false;
+            }
+        }
+    }
+
     Connections {
         target: inputPanel.InputContext
         function onShiftActiveChanged() {
