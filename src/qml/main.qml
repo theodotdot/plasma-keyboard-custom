@@ -769,14 +769,6 @@ InputPanelWindow {
         }
     }
 
-    Connections {
-        target: inputPanel.InputContext
-        function onShiftActiveChanged() {
-            console.log("DBG InputContext.shiftActive ->", inputPanel.InputContext.shiftActive,
-                        "uppercase ->", inputPanel.InputContext.uppercase)
-        }
-    }
-
     Component.onCompleted: {
         VirtualKeyboardSettings.keySoundVolume = 100;
         root.updatePredictions();

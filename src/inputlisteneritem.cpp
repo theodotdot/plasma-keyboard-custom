@@ -1127,9 +1127,6 @@ QStringList InputListenerItem::alternatesFor(const QVariantList &alternatives, b
 
 void InputListenerItem::keyPressEvent(QKeyEvent *event)
 {
-    if (event->key() == Qt::Key_Shift || event->key() == Qt::Key_CapsLock) {
-        qCDebug(PlasmaKeyboard) << "DBG modifier key pressed:" << event->key() << event->text() << "mods" << int(event->modifiers());
-    }
     if (IGNORED_KEYS->find(event->key()) != IGNORED_KEYS->end()) {
         return;
     }
