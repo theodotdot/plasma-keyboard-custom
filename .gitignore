@@ -33,7 +33,7 @@ Testing/
 # Packaging build artifacts
 /packaging/src/
 /packaging/pkg/
-/packaging/*.pkg.tar.zst
+/packaging/**/*.pkg.tar.*
 /packaging/*.tar.gz
 
 # Local session data: plans and downloaded word list sources
