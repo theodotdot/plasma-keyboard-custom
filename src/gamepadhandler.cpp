@@ -520,12 +520,6 @@ void GamepadHandler::onInputEvent(const QString &event, double value)
     } else if (event == QLatin1String("ui_option")) {
         // Start: close the keyboard.
         Q_EMIT hideKeyboard();
-    } else if (event == QLatin1String("ui_guide")) {
-        // Guide (the AYN key): close the keyboard while it is up. While the
-        // keyboard is hidden the user's InputPlumber profile maps Guide to a
-        // key niri binds to the toggle, because the profile swap replaces that
-        // mapping for as long as the keyboard is on screen.
-        Q_EMIT hideKeyboard();
     }
 }
 

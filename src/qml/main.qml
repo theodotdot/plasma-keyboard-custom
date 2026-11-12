@@ -725,6 +725,10 @@ InputPanelWindow {
                 root.closeVoiceMode();
                 return;
             }
+            // On niri nothing else unmaps the layer surface, so B has to do it.
+            if (plasmaKeyboardNiriMode) {
+                PlasmaKeyboard.KeyboardWindow.setKeyboardWindowMapped(false);
+            }
             Qt.inputMethod.hide();
         }
         onHideKeyboard: {
