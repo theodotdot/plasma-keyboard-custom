@@ -538,7 +538,24 @@ ClipboardHistory *InputListenerItem::clipboardHistory() const
 
 void InputListenerItem::commitText(const QString &text)
 {
-    if (text.isEmpty() || !m_input.hasContext()) {
+    if (text.isEmpty()) {
+        return;
+    }
+
+    if (plasmaKeyboardNiriMode()) {
+        // No input-method-v1 context on niri: hand the text to the compositor
+        // through input-method-v2, and fall back to typing the characters the
+        // keymap can produce when no text input speaks the protocol.
+        if (ImV2Client::instance()->commitText(text)) {
+            return;
+        }
+        for (const QChar character : text) {
+            sendKeyEvent(Qt::Key_unknown, QString(character));
+        }
+        return;
+    }
+
+    if (!m_input.hasContext()) {
         return;
     }
 
