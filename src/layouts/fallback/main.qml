@@ -17,11 +17,7 @@ KeyboardLayout {
     readonly property real normalKeyWidth: normalKey.width
     readonly property real functionKeyWidth: mapFromItem(normalKey, normalKey.width / 2, 0).x
     KeyboardRow {
-        Key {
-            text: pcLayout.symbolsShifted ? "~" : "`"
-            alternativeKeys: "`~"
-            smallText: pcLayout.symbolsShifted ? "`" : "~"
-            smallTextVisible: true
+        PlasmaKeyboard.MicrophoneKey {
         }
         Key {
             text: pcLayout.symbolsShifted ? "!" : "1"
@@ -89,11 +85,7 @@ KeyboardLayout {
             smallText: pcLayout.symbolsShifted ? "-" : "_"
             smallTextVisible: true
         }
-        Key {
-            text: pcLayout.symbolsShifted ? "+" : "="
-            alternativeKeys: "=+"
-            smallText: pcLayout.symbolsShifted ? "=" : "+"
-            smallTextVisible: true
+        PlasmaKeyboard.FloatingKey {
         }
     }
     KeyboardRow {
@@ -204,10 +196,6 @@ KeyboardLayout {
             FillerKey {
             }
         }
-        EnterKey {
-            weight: functionKeyWidth
-            Layout.fillWidth: false
-        }
     }
     KeyboardRow {
         ShiftKey {
@@ -255,10 +243,6 @@ KeyboardLayout {
             weight: functionKeyWidth
             Layout.fillWidth: false
         }
-        PlasmaKeyboard.FloatingKey {
-            weight: normalKeyWidth
-            Layout.fillWidth: false
-        }
         Key {
             key: Qt.Key_Comma
             weight: normalKeyWidth
@@ -267,10 +251,6 @@ KeyboardLayout {
             highlighted: true
         }
         SpaceKey {
-        }
-        PlasmaKeyboard.MicrophoneKey {
-            weight: normalKeyWidth
-            Layout.fillWidth: false
         }
         Key {
             key: Qt.Key_Period
@@ -284,6 +264,10 @@ KeyboardLayout {
         }
         HideKeyboardKey {
             weight: normalKeyWidth
+            Layout.fillWidth: false
+        }
+        EnterKey {
+            weight: functionKeyWidth
             Layout.fillWidth: false
         }
     }
