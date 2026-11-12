@@ -13,6 +13,8 @@
 
 #include <qqmlintegration.h>
 
+#include <functional>
+
 class QTimer;
 
 /**
@@ -124,10 +126,43 @@ private:
     uint interceptMode() const;
     void setInterceptMode(uint mode);
 
+    //! Reads a string property of the composite device.
+    QString compositeProperty(const QString &interface, const QString &property) const;
+
+    /**
+     * The InputPlumber profile loaded while the keyboard is on screen.
+     *
+     * It has no mappings, so the gamepad events stay raw and the
+     * gamepad-only interception can route them to the dbus target. A user
+     * profile that maps the pad to mouse/keyboard (niri.yaml on the Thor)
+     * translates the events before interception, which would both keep the
+     * pad driving the desktop and starve the keyboard's navigation.
+     */
+    QString oskProfilePath() const;
+
+    //! Where the user's profile path is remembered across a crash.
+    QString profileRestoreFilePath() const;
+
+    //! Writes the OSK profile next to the restore file; false if it cannot.
+    bool writeOskProfile() const;
+
+    //! Loads an InputPlumber profile; @p then runs when the call finished.
+    void loadProfilePath(const QString &path, const std::function<void()> &then = {});
+
+    //! Fire-and-forget variant for contexts where the object may go away.
+    void loadProfilePathNoBlock(const QString &path) const;
+
+    //! Puts back whatever a previous instance left switched while it died.
+    void recoverFromPreviousInstance();
+
     bool m_available = false;
     QString m_compositePath;
     bool m_active = false;
     uint m_savedInterceptMode = 0;
+    /*! The profile that was loaded before the keyboard swapped in its own. */
+    QString m_savedProfilePath;
+    /*! Whether the OSK profile is currently loaded by this instance. */
+    bool m_switchedProfile = false;
     /*! Whether the compositor reports the keyboard as visible. */
     bool m_kwinVisible = false;
     /*! Whether the keyboard window is on screen (see the keyboardOnScreen property). */

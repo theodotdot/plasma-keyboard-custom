@@ -10,7 +10,12 @@
 
 #include <QDBusConnection>
 #include <QDBusMessage>
+#include <QDBusPendingCallWatcher>
 #include <QDBusVariant>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QStandardPaths>
 #include <QTimer>
 #include <Qt>
 
@@ -19,6 +24,7 @@ namespace
 constexpr auto s_service = "org.shadowblip.InputPlumber";
 constexpr auto s_interface = "org.shadowblip.Input.DBusDevice";
 constexpr auto s_signal = "InputEvent";
+constexpr auto s_compositeInterface = "org.shadowblip.Input.CompositeDevice";
 
 // Turbo mode for the held backspace button: after this pause the deletion
 // repeats every s_backspaceRepeatMs, like a held key on a hardware keyboard.
@@ -115,6 +121,7 @@ GamepadHandler::GamepadHandler(QObject *parent)
     });
 
     const QString path = findDbusDevicePath(&m_compositePath);
+    recoverFromPreviousInstance();
     qCDebug(PlasmaKeyboard) << "GamepadHandler: InputPlumber dbus target" << (path.isEmpty() ? QStringLiteral("<not found>") : path);
     if (path.isEmpty()) {
         return;
@@ -223,6 +230,10 @@ GamepadHandler::~GamepadHandler()
     if (m_active) {
         setInterceptMode(m_savedInterceptMode);
     }
+    if (m_switchedProfile && !m_savedProfilePath.isEmpty()) {
+        loadProfilePathNoBlock(m_savedProfilePath);
+        QFile::remove(profileRestoreFilePath());
+    }
 }
 
 bool GamepadHandler::isAvailable() const
@@ -255,6 +266,115 @@ void GamepadHandler::setInterceptMode(uint mode)
     QDBusConnection::systemBus().call(msg);
 }
 
+QString GamepadHandler::compositeProperty(const QString &interface, const QString &property) const
+{
+    if (m_compositePath.isEmpty()) {
+        return {};
+    }
+    QDBusMessage msg = QDBusMessage::createMethodCall(QLatin1String(s_service), m_compositePath, QStringLiteral("org.freedesktop.DBus.Properties"), QStringLiteral("Get"));
+    msg << interface << property;
+    const QDBusMessage reply = QDBusConnection::systemBus().call(msg);
+    if (reply.type() != QDBusMessage::ReplyMessage || reply.arguments().isEmpty()) {
+        return {};
+    }
+    return reply.arguments().first().value<QDBusVariant>().variant().toString();
+}
+
+QString GamepadHandler::oskProfilePath() const
+{
+    QString dir = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
+    if (dir.isEmpty()) {
+        dir = QDir::tempPath();
+    }
+    return dir + QStringLiteral("/plasma-keyboard-custom/osk-gamepad.yaml");
+}
+
+QString GamepadHandler::profileRestoreFilePath() const
+{
+    return QFileInfo(oskProfilePath()).absolutePath() + QStringLiteral("/saved-gamepad-profile");
+}
+
+bool GamepadHandler::writeOskProfile() const
+{
+    const QString path = oskProfilePath();
+    if (!QDir().mkpath(QFileInfo(path).absolutePath())) {
+        qCWarning(PlasmaKeyboard) << "GamepadHandler: cannot create the directory for" << path;
+        return false;
+    }
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        qCWarning(PlasmaKeyboard) << "GamepadHandler: cannot write" << path;
+        return false;
+    }
+    // No mappings on purpose: the gamepad events reach InputPlumber's
+    // interception untranslated and are then routed to the dbus target, which
+    // turns them into the ui_* actions this class listens for.
+    file.write(QByteArrayLiteral("version: 1\n"
+                                 "kind: DeviceProfile\n"
+                                 "name: Plasma Keyboard OSK\n"
+                                 "description: Raw gamepad events for on-screen keyboard navigation\n"
+                                 "mapping: []\n"));
+    return true;
+}
+
+void GamepadHandler::loadProfilePath(const QString &path, const std::function<void()> &then)
+{
+    if (m_compositePath.isEmpty() || path.isEmpty()) {
+        return;
+    }
+    QDBusMessage msg = QDBusMessage::createMethodCall(QLatin1String(s_service), m_compositePath, QLatin1String(s_compositeInterface), QStringLiteral("LoadProfilePath"));
+    msg << path;
+    auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::systemBus().asyncCall(msg), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [watcher, path, then](QDBusPendingCallWatcher *call) {
+        if (call->isError()) {
+            qCWarning(PlasmaKeyboard) << "GamepadHandler: could not load profile" << path << ":" << call->error().message();
+        } else {
+            qCDebug(PlasmaKeyboard) << "GamepadHandler: loaded profile" << path;
+        }
+        watcher->deleteLater();
+        if (then) {
+            then();
+        }
+    });
+}
+
+void GamepadHandler::loadProfilePathNoBlock(const QString &path) const
+{
+    if (m_compositePath.isEmpty() || path.isEmpty()) {
+        return;
+    }
+    QDBusMessage msg = QDBusMessage::createMethodCall(QLatin1String(s_service), m_compositePath, QLatin1String(s_compositeInterface), QStringLiteral("LoadProfilePath"));
+    msg << path;
+    QDBusConnection::systemBus().call(msg, QDBus::NoBlock);
+}
+
+void GamepadHandler::recoverFromPreviousInstance()
+{
+    if (m_compositePath.isEmpty()) {
+        return;
+    }
+
+    // A previous instance may have died while the keyboard held the OSK profile:
+    // the user's own mapping would be gone and nothing would put it back.
+    QFile restore(profileRestoreFilePath());
+    if (restore.exists() && restore.open(QIODevice::ReadOnly)) {
+        const QString saved = QString::fromUtf8(restore.readAll()).trimmed();
+        restore.close();
+        QFile::remove(profileRestoreFilePath());
+        if (!saved.isEmpty()) {
+            qCWarning(PlasmaKeyboard) << "GamepadHandler: giving back the profile left switched by an earlier instance:" << saved;
+            loadProfilePathNoBlock(saved);
+        }
+    }
+
+    // Same for the interception: a gamepad left in gamepad-only mode reaches
+    // neither the system nor this (dead) instance.
+    if (interceptMode() == s_interceptGamepadOnly) {
+        qCWarning(PlasmaKeyboard) << "GamepadHandler: giving back a gamepad left intercepted by an earlier instance";
+        setInterceptMode(s_interceptNone);
+    }
+}
+
 void GamepadHandler::setActive(bool active)
 {
     if (!m_available || m_compositePath.isEmpty()) {
@@ -275,8 +395,36 @@ void GamepadHandler::setActive(bool active)
         // gamepad-only: gamepad input is routed over D-Bus and no longer
         // reaches the game (or Steam's mapping).
         setInterceptMode(s_interceptGamepadOnly);
+
+        // A user profile that maps the gamepad to mouse/keyboard (niri.yaml on
+        // the Thor) translates the events before InputPlumber's interception
+        // sees them: gamepad-only interception would neither stop that mapping
+        // nor feed the dbus target, so the pad would keep driving the desktop
+        // while the keyboard is up. Swap in the unmapped OSK profile for as
+        // long as the keyboard is shown.
+        m_savedProfilePath = compositeProperty(QLatin1String(s_compositeInterface), QStringLiteral("ProfilePath"));
+        if (!m_savedProfilePath.isEmpty() && m_savedProfilePath != oskProfilePath() && writeOskProfile()) {
+            QFile restore(profileRestoreFilePath());
+            if (restore.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+                restore.write(m_savedProfilePath.toUtf8());
+                restore.close();
+            }
+            m_switchedProfile = true;
+            qCDebug(PlasmaKeyboard) << "GamepadHandler: swapping profile" << m_savedProfilePath << "->" << oskProfilePath();
+            loadProfilePath(oskProfilePath(), [this] {
+                // Loading a profile rebuilds the target devices; make sure the
+                // interception is still in place afterwards.
+                setInterceptMode(s_interceptGamepadOnly);
+            });
+        }
     } else {
         setInterceptMode(m_savedInterceptMode);
+        if (m_switchedProfile) {
+            m_switchedProfile = false;
+            qCDebug(PlasmaKeyboard) << "GamepadHandler: restoring profile" << m_savedProfilePath;
+            loadProfilePath(m_savedProfilePath);
+            QFile::remove(profileRestoreFilePath());
+        }
         // No release events arrive once the gamepad is no longer intercepted.
         m_backspaceHeld = false;
         m_backspaceTimer->stop();
