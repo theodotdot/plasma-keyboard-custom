@@ -683,7 +683,9 @@ InputPanelWindow {
         onToggleShift: {
             // Shift has nothing to shift on the voice page.
             if (!root.voiceMode) {
+                console.log("DBG toggleShift from gamepad; shiftActive before:", inputPanel.InputContext.shiftActive);
                 inputPanel.InputContext.priv.shiftHandler.toggleShift();
+                console.log("DBG toggleShift done; shiftActive now:", inputPanel.InputContext.shiftActive);
             }
         }
         onToggleSymbols: {
@@ -719,6 +721,14 @@ InputPanelWindow {
     }
 
     // Play the key click at full volume: the bundled sound is mastered quiet.
+    Connections {
+        target: inputPanel.InputContext
+        function onShiftActiveChanged() {
+            console.log("DBG InputContext.shiftActive ->", inputPanel.InputContext.shiftActive,
+                        "uppercase ->", inputPanel.InputContext.uppercase)
+        }
+    }
+
     Component.onCompleted: {
         VirtualKeyboardSettings.keySoundVolume = 100;
         root.updatePredictions();

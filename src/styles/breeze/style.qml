@@ -459,6 +459,7 @@ KeyboardStyle {
                 id: shiftKeyIcon
                 anchors.centerIn: parent
                 implicitHeight: 134 * theme.keyIconScale
+                implicitWidth: implicitHeight
                 source: {
                     if (InputContext.capsLockActive) {
                         return PlasmaKeyboard.BreezeConstants.breezeIcon("keyboard-caps-locked-symbolic");

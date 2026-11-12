@@ -55,6 +55,7 @@
 #include <QRegion>
 #include <QScreen>
 #include <QStandardPaths>
+#include <QTime>
 #include <QTimer>
 #include <QVariantMap>
 #include <QWindow>
@@ -500,7 +501,7 @@ public:
             qCWarning(PlasmaKeyboard) << "setKeyboardWindowMapped called before the keyboard window exists";
             return;
         }
-        qCDebug(PlasmaKeyboard) << "setKeyboardWindowMapped" << visible << "window" << m_keyboard << "layer-shell" << m_layerShell;
+        qCDebug(PlasmaKeyboard) << "setKeyboardWindowMapped" << visible << "before-visible" << m_keyboard->isVisible();
         if (visible) {
             // Qt Virtual Keyboard keeps the keys disabled unless the window
             // holding the input item is the active window.
@@ -892,6 +893,7 @@ public Q_SLOTS:
         qCDebug(PlasmaKeyboard) << "keyboard visible" << keyboardVisible << "keyboard on screen" << keyboardOnScreen << "input method visible"
                                 << QGuiApplication::inputMethod()->isVisible();
 
+        qCDebug(PlasmaKeyboard) << "visibility poll: compositor" << compositorVisible << "change" << (visibilityChange ? (*visibilityChange ? "show" : "hide") : "none");
         // Only edges are commands: a repeated poll must not undo a local hide.
         // During lock, compositor hide is authoritative regardless of the
         // desktop focus-loss preference. The mapped stub survives this hide.
@@ -1034,12 +1036,20 @@ int main(int argc, char **argv)
     if (plasmaKeyboardNiriMode()) {
         qInstallMessageHandler([](QtMsgType type, const QMessageLogContext &context, const QString &message) {
             const char *level = type == QtDebugMsg ? "debug" : type == QtInfoMsg ? "info" : type == QtWarningMsg ? "warning" : "critical";
-            fprintf(stderr, "%s %s: %s\n", level, context.category ? context.category : "default", qPrintable(message));
+            fprintf(stderr, "%s %s %s: %s\n", QTime::currentTime().toString(QStringLiteral("HH:mm:ss.zzz")).toUtf8().constData(), level,
+                    context.category ? context.category : "default", qPrintable(message));
             fflush(stderr);
         });
     }
 
     qputenv("QT_IM_MODULE", QByteArray("qtvirtualkeyboard"));
+    if (plasmaKeyboardNiriMode()) {
+        // Qt Virtual Keyboard has no platform input context on niri, so its
+        // input context never learns it has focus. This switch is the
+        // documented way to keep its fallback path (and the shift handler)
+        // working in exactly that situation.
+        qputenv("QT_VIRTUALKEYBOARD_FORCE_EVENTS_WITHOUT_FOCUS", "1");
+    }
 
     initLayoutsPath();
 
@@ -1305,6 +1315,7 @@ int main(int argc, char **argv)
             });
 
             QObject::connect(window, &QWindow::visibleChanged, window, [window, authorizeKeyboardRole](bool visible) {
+                qCDebug(PlasmaKeyboard) << "keyboard window visibleChanged" << visible << "active" << window->isActive();
                 if (plasmaKeyboardNiriMode()) {
                     // The output is pinned and there is no compositor asking
                     // for the keyboard back, so hiding must not destroy the
