@@ -115,6 +115,7 @@ ExternalProject_Add(transcribe_cpp
 add_executable(plasma-keyboard-custom)
 
 ecm_add_qtwayland_client_protocol(plasma-keyboard-custom PROTOCOL ${WaylandProtocols_DATADIR}/unstable/input-method/input-method-unstable-v1.xml BASENAME input-method-unstable-v1)
+ecm_add_qtwayland_client_protocol(plasma-keyboard-custom PROTOCOL ${CMAKE_CURRENT_SOURCE_DIR}/wayland/input-method-unstable-v2.xml BASENAME input-method-unstable-v2)
 ecm_add_qtwayland_client_protocol(plasma-keyboard-custom PROTOCOL ${WaylandProtocols_DATADIR}/unstable/text-input/text-input-unstable-v1.xml BASENAME text-input-unstable-v1)
 ecm_add_qtwayland_client_protocol(plasma-keyboard-custom PROTOCOL "${Wayland_DATADIR}/wayland.xml" BASENAME wayland)
 ecm_add_qtwayland_client_protocol(plasma-keyboard-custom PROTOCOL ${CMAKE_CURRENT_SOURCE_DIR}/wayland/kde-lockscreen-overlay-v1.xml BASENAME kde-lockscreen-overlay-v1)
@@ -152,6 +153,8 @@ target_sources(plasma-keyboard-custom PRIVATE
     uinputkeyboard.h
     xkbkeymapper.cpp
     xkbkeymapper.h
+    imv2client.cpp
+    imv2client.h
     niriinputmethod.cpp
     niriinputmethod.h
     inputplugin.h

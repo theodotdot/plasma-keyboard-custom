@@ -7,6 +7,8 @@
 */
 
 #include "inputlisteneritem.h"
+
+#include "imv2client.h"
 #include "clipboard/clipboardhistory.h"
 #include "inputmethod_p.h"
 #include "logging.h"
@@ -1027,13 +1029,16 @@ bool InputListenerItem::sendUinputKey(QKeyEvent *event, bool press)
             if (mapKeysymOnNiriKeymap(textKeysym).isValid()) {
                 keysym = textKeysym;
             } else if (eventText.at(0).unicode() > 0x7f) {
-                // No keycode produces this character: it needs the input-method
-                // protocol, which this path does not speak yet.
+                // No keycode produces this character, so press keys cannot type
+                // it: hand it to the compositor as text instead.
                 if (press) {
-                    qCWarning(PlasmaKeyboard)
-                        << QStringLiteral("Keymap cannot produce alternate \"%1\" - key dropped").arg(eventText);
+                    if (!ImV2Client::instance()->commitText(eventText)) {
+                        qCWarning(PlasmaKeyboard)
+                            << QStringLiteral("Keymap cannot produce alternate \"%1\" and no text input is active").arg(eventText);
+                        return false;
+                    }
                 }
-                return false;
+                return true;
             }
         }
     }

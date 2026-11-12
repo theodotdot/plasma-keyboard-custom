@@ -12,6 +12,7 @@
 #include "keyboardvisibilitystate.h"
 #include "layoutpathhelper.h"
 #include "logging.h"
+#include "imv2client.h"
 #include "niriinputmethod.h"
 #include "nirimode.h"
 #include "panelstubgeometry.h"
@@ -49,6 +50,7 @@
 #include <QLockFile>
 #include <QPointer>
 #include <QProcess>
+#include <QtGui/qpa/qplatformnativeinterface.h>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickWindow>
@@ -1192,6 +1194,15 @@ int main(int argc, char **argv)
     }
 
     QQmlApplicationEngine view;
+
+    // Characters the keymap cannot produce (the letter alternates such as "ê")
+    // are committed as text through zwp_input_method_v2 instead of as keys.
+    if (plasmaKeyboardNiriMode()) {
+        auto *platformNative = QGuiApplication::platformNativeInterface();
+        auto *waylandDisplay = static_cast<wl_display *>(platformNative->nativeResourceForIntegration("wl_display"));
+        ImV2Client::instance()->initialize(waylandDisplay);
+    }
+
     // QML needs to know whether the compositor drives the keyboard: without an
     // input-method protocol, the panel's active state has to follow the window.
     view.rootContext()->setContextProperty(QStringLiteral("plasmaKeyboardNiriMode"), plasmaKeyboardNiriMode());
