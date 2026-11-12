@@ -145,7 +145,9 @@ InputPanelWindow {
 
     //! Opens the voice input mode from the microphone key of a layout.
     function openVoiceMode() {
-        if (auxiliaryUiAllowed && PlasmaKeyboardSettings.sttEnabled) {
+        // auxiliaryUiAllowed needs an input-method-v1 context, which niri does
+        // not have; the keyboard is only on screen for an editable field there.
+        if ((auxiliaryUiAllowed || plasmaKeyboardNiriMode) && PlasmaKeyboardSettings.sttEnabled) {
             root.voiceMode = true;
             root.voiceNavigationActive = false;
             voicePanel.focusIndex = voicePanel.microphoneIndex;
@@ -157,6 +159,15 @@ InputPanelWindow {
         PlasmaKeyboard.Stt.cancel();
         root.voiceMode = false;
         root.voiceNavigationActive = false;
+    }
+
+    //! Layouts cannot reach this window directly, so the microphone key asks
+    //! for the voice mode through the shared singleton.
+    Connections {
+        target: PlasmaKeyboard.VoiceMode
+        function onRequested() {
+            root.openVoiceMode();
+        }
     }
 
     //! All loading, completion, correction and next-word work lives off-thread.

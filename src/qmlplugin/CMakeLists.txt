@@ -6,6 +6,7 @@ ecm_add_qml_module(keyboardlib URI org.kde.plasma.keyboard.custom.lib GENERATE_P
 set_source_files_properties(
     BreezeConstants.qml
     Theme.qml
+    VoiceMode.qml
     PROPERTIES
     QT_QML_SINGLETON_TYPE TRUE
 )
@@ -23,6 +24,7 @@ ecm_target_qml_sources(keyboardlib SOURCES
     ThemePalette.qml
     ThemeSystemPalette.qml
     ThemeLightPalette.qml
+    VoiceMode.qml
     ThemeDarkPalette.qml
     ThemeIosLightPalette.qml
     ThemeIosDarkPalette.qml

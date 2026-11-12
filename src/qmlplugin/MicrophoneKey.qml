@@ -23,15 +23,10 @@ BaseKey {
 
     functionKey: true
     highlighted: true
-    visible: PlasmaKeyboardSettings.sttEnabled && root.Window.window !== null && root.Window.window.auxiliaryUiAllowed === true
+    visible: PlasmaKeyboardSettings.sttEnabled
     keyPanelDelegate: fallbackPanel
 
-    onClicked: {
-        const window = root.Window.window;
-        if (window && typeof window.openVoiceMode === "function") {
-            window.openVoiceMode();
-        }
-    }
+    onClicked: PlasmaKeyboard.VoiceMode.requested()
 
     //! The style in use does not know a microphone key panel, so the key draws
     //! itself.
