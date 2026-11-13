@@ -406,7 +406,50 @@ public:
     void setLayerShellWindow(LayerShellQt::Window *layerShell)
     {
         m_layerShell = layerShell;
+        if (!m_pinRetriesConnected) {
+            m_pinRetriesConnected = true;
+            connect(qApp, &QGuiApplication::screenAdded, this, [this](QScreen *) {
+                pinKeyboardScreen();
+            });
+            connect(qApp, &QGuiApplication::screenRemoved, this, [this](QScreen *) {
+                pinKeyboardScreen();
+            });
+        }
+        pinKeyboardScreen();
         applyPanelLayout();
+    }
+
+    /**
+     * niri: pin the layer-shell surface to its output.
+     *
+     * The Plasma path pins through the input-panel stub, which does not exist here.
+     * A layer-shell role cannot change its output once it is created, so the pin has
+     * to be in place before the first map; outputs are announced asynchronously and
+     * the service can start before the last connector is up, so retry on screenAdded
+     * and again right before every map.
+     */
+    void pinKeyboardScreen()
+    {
+        if (!plasmaKeyboardNiriMode() || !m_layerShell) {
+            return;
+        }
+
+        const QString outputName = qEnvironmentVariable("PLASMA_KEYBOARD_OUTPUT", QStringLiteral("DSI-1"));
+        for (auto *screen : QGuiApplication::screens()) {
+            if (screen->name() != outputName) {
+                continue;
+            }
+            if (m_layerShell->screen() != screen) {
+                qCDebug(PlasmaKeyboard) << "pinning the keyboard to" << outputName;
+                m_layerShell->setScreen(screen);
+            }
+            if (m_keyboard && m_keyboard->screen() != screen) {
+                m_keyboard->setScreen(screen);
+            }
+            return;
+        }
+
+        qCWarning(PlasmaKeyboard) << "output" << outputName << "not announced yet, cannot pin the keyboard";
     }
 
     void setKeyboardWindow(QWindow *window)
@@ -505,6 +548,8 @@ public:
         }
         qCDebug(PlasmaKeyboard) << "setKeyboardWindowMapped" << visible << "before-visible" << m_keyboard->isVisible();
         if (visible) {
+            // niri: the layer role (and its output) is created by this map.
+            pinKeyboardScreen();
             // Qt Virtual Keyboard keeps the keys disabled unless the window
             // holding the input item is the active window.
             activateKeyboardWindow(m_keyboard);
@@ -687,6 +732,7 @@ private:
     QPointer<QQuickWindow> m_stub;
     QPointer<QWindow> m_keyboard;
     QPointer<LayerShellQt::Window> m_layerShell;
+    bool m_pinRetriesConnected = false;
     QTimer m_outputRelocationTimer;
     QRect m_panelRect;
     QMargins m_panelInsets;
@@ -1244,6 +1290,7 @@ int main(int argc, char **argv)
                     break;
                 }
             }
+
         }
         layerShell->setDesiredSize(window->screen() ? window->screen()->geometry().size() : QSize(1280, 800));
         // The keyboard must not take the focus away from the field it types
