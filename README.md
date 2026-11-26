@@ -21,6 +21,25 @@ It wraps Qt Virtual Keyboard in a window, and uses the input-method-v1 Wayland p
 
 ## plasma-keyboard-custom (fork)
 
+### Ayn Thor / niri (aarch64)
+
+The prebuilt packages and `install.sh` are x86_64 only. On the Thor, build
+this branch from source and use the niri systemd unit:
+
+```sh
+git clone -b feature/niri-backend https://github.com/theodotdot/plasma-keyboard-custom.git
+cd plasma-keyboard-custom/packaging/arch
+makepkg -si
+systemctl --user enable --now plasma-keyboard-custom.service
+```
+
+`makepkg -si` installs the package dependencies with pacman; the build also
+needs `base-devel`, `cmake`, `extra-cmake-modules`, `ninja`, `gettext` and
+`pkgconf` (`pacman -S --needed base-devel cmake extra-cmake-modules ninja gettext pkgconf`).
+The package is named `plasma-keyboard-custom-niri`, installs under `/usr`,
+and leaves the stock `plasma-keyboard` package alone. The unit sets
+`PLASMA_KEYBOARD_NIRI=1`; without it the keyboard expects KWin.
+
 ### Install the latest release
 
 The quickest way is the [install script](install.sh): it takes the newest release, downloads the
@@ -346,6 +365,10 @@ The settings page in System Settings:
 License and copyright remain those of the upstream project (see `LICENSES/` and the SPDX headers in each file).
 
 ## Building from source manually
+
+On Arch-based systems use `packaging/arch` instead: its PKGBUILD installs the
+full dependency set (`kcmutils`, `libplasma`, `layer-shell-qt`, Qt 6, KF6)
+and the systemd unit. Elsewhere:
 
 ```sh
 mkdir build && cd build

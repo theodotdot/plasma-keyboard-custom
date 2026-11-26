@@ -10,7 +10,7 @@ depends=(
   'qt6-base' 'qt6-declarative' 'qt6-wayland' 'qt6-virtualkeyboard'
   'qt6-svg' 'layer-shell-qt'
   'kcoreaddons' 'kconfig' 'ki18n' 'kcrash' 'kglobalaccel' 'kirigami'
-  'plasma-integration'
+  'kcmutils' 'libplasma' 'plasma-integration'
 )
 makedepends=('cmake' 'extra-cmake-modules' 'ninja' 'qt6-wayland' 'wayland-protocols' 'gettext' 'pkgconf')
 optdepends=('handy: dictation backend for the microphone key'
